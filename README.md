@@ -7,6 +7,8 @@ An MCP server that jacks [Agent Skills](https://agentskills.dev) directly into y
 - **Dynamic Skill Discovery** - Discovers skills from MCP Roots (client workspace) or fallback directory
 - **Server Instructions** - Injects skill metadata into the client's system prompt
 - **Skill Tool** - Load full skill content on demand (progressive disclosure)
+- **MCP Resources** - Access skills via `skill://` URIs with batch collection support
+- **Resource Subscriptions** - Real-time file watching with `notifications/resources/updated`
 - **Live Updates** - Re-discovers skills when workspace roots change
 
 ## Installation
@@ -114,6 +116,53 @@ This follows the Agent Skills spec's progressive disclosure pattern - resources 
 ```
 
 **Security:** Path traversal is prevented - only files within the skill directory can be accessed.
+
+## Resources
+
+Skills are also accessible via MCP Resources using `skill://` URIs.
+
+### URI Patterns
+
+| URI | Returns |
+|-----|---------|
+| `skill://` | All SKILL.md contents (collection) |
+| `skill://{name}` | Single skill's SKILL.md content |
+| `skill://{name}/` | All files in skill directory (collection) |
+| `skill://{name}/{path}` | Specific file within skill |
+
+### Resource Subscriptions
+
+Clients can subscribe to resources for real-time updates when files change.
+
+**Capability:** `resources: { subscribe: true, listChanged: true }`
+
+**Subscribe to a resource:**
+```
+→ resources/subscribe { uri: "skill://mcp-server-ts" }
+← {} (success)
+```
+
+**Receive notifications when files change:**
+```
+← notifications/resources/updated { uri: "skill://mcp-server-ts" }
+```
+
+**Unsubscribe:**
+```
+→ resources/unsubscribe { uri: "skill://mcp-server-ts" }
+← {} (success)
+```
+
+**How it works:**
+1. Client subscribes to a `skill://` URI
+2. Server resolves URI to file path(s) and starts watching with chokidar
+3. When files change, server debounces (100ms) and sends notification
+4. Client can re-read the resource to get updated content
+
+**URI to file path resolution:**
+- `skill://` → watches all skill directories
+- `skill://{name}` → watches that skill's SKILL.md
+- `skill://{name}/{path}` → watches specific file
 
 ## Security
 
