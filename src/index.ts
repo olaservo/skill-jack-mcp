@@ -18,6 +18,11 @@ import { generateInstructions } from "./skill-discovery.js";
 import { registerSkillTool, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import { syncSkills } from "./roots-handler.js";
+import {
+  createSubscriptionManager,
+  registerSubscriptionHandlers,
+  refreshSubscriptions,
+} from "./subscriptions.js";
 
 /**
  * Get the fallback skills directory from command line args or environment.
@@ -48,6 +53,11 @@ const skillState: SkillState = {
   instructions: "",
 };
 
+/**
+ * Subscription manager for resource file watching.
+ */
+const subscriptionManager = createSubscriptionManager();
+
 async function main() {
   const fallbackSkillsDir = getFallbackSkillsDir();
 
@@ -68,7 +78,7 @@ async function main() {
     {
       capabilities: {
         tools: {},
-        resources: { listChanged: true },
+        resources: { subscribe: true, listChanged: true },
       },
       // Start with minimal instructions; updated after roots discovery
       instructions: generateInstructions([]),
@@ -80,6 +90,9 @@ async function main() {
   registerSkillTool(server, skillState);
   registerSkillResources(server, skillState);
 
+  // Register subscription handlers for resource file watching
+  registerSubscriptionHandlers(server, skillState, subscriptionManager);
+
   // Set up post-initialization handler for roots discovery
   // Pattern from .claude/skills/mcp-server-ts/snippets/server/index.ts
   server.server.oninitialized = async () => {
@@ -90,6 +103,15 @@ async function main() {
         // Update shared state
         skillState.skillMap = newSkillMap;
         skillState.instructions = newInstructions;
+
+        // Refresh subscriptions with new skill paths
+        const sendNotification = (uri: string) => {
+          server.server.notification({
+            method: "notifications/resources/updated",
+            params: { uri },
+          });
+        };
+        refreshSubscriptions(subscriptionManager, skillState, sendNotification);
 
         const skillNames = Array.from(newSkillMap.keys());
         console.error(
