@@ -4,18 +4,21 @@
  * Resources provide application-controlled access to skill content,
  * complementing the model-controlled tool access.
  *
+ * All resources use templates with dynamic list callbacks to support
+ * skill updates when MCP roots change.
+ *
  * URI Scheme:
  *   skill://                    -> Collection: all SKILL.md contents
- *   skill://{skillName}         -> SKILL.md content
+ *   skill://{skillName}         -> SKILL.md content (template)
  *   skill://{skillName}/        -> Collection: all files in skill
- *   skill://{skillName}/{path}  -> File within skill directory
+ *   skill://{skillName}/{path}  -> File within skill directory (template)
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SkillMetadata, loadSkillContent } from "./skill-discovery.js";
-import { isPathWithinBase, listSkillFiles, MAX_FILE_SIZE } from "./skill-tool.js";
+import { isPathWithinBase, listSkillFiles, MAX_FILE_SIZE, SkillState } from "./skill-tool.js";
 
 /**
  * Get MIME type based on file extension.
@@ -42,56 +45,24 @@ function getMimeType(filePath: string): string {
 /**
  * Register skill resources with the MCP server.
  *
- * This registers:
- * 1. Static resources for each skill's SKILL.md
- * 2. A resource template for accessing files within skills
+ * All resources use templates with dynamic list callbacks to support
+ * skill updates when MCP roots change.
  *
  * @param server - The McpServer instance
- * @param skillMap - Map from skill name to metadata
+ * @param skillState - Shared state object (allows dynamic updates)
  */
 export function registerSkillResources(
   server: McpServer,
-  skillMap: Map<string, SkillMetadata>
+  skillState: SkillState
 ): void {
   // Register collection resource for all skills
-  registerAllSkillsCollection(server, skillMap);
+  registerAllSkillsCollection(server, skillState);
 
-  // Register collection resources for each skill's files
-  registerSkillFileCollections(server, skillMap);
-
-  // Register static resources for each skill's SKILL.md
-  for (const [name, skill] of skillMap) {
-    const uri = `skill://${encodeURIComponent(name)}`;
-
-    server.registerResource(
-      name,
-      uri,
-      {
-        mimeType: "text/markdown",
-        description: skill.description,
-      },
-      async (resourceUri) => {
-        try {
-          const content = loadSkillContent(skill.path);
-          return {
-            contents: [
-              {
-                uri: resourceUri.toString(),
-                mimeType: "text/markdown",
-                text: content,
-              },
-            ],
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          throw new Error(`Failed to load skill "${name}": ${message}`);
-        }
-      }
-    );
-  }
+  // Register template for individual skill SKILL.md files
+  registerSkillTemplate(server, skillState);
 
   // Register resource template for skill files
-  registerSkillFileTemplate(server, skillMap);
+  registerSkillFileTemplate(server, skillState);
 }
 
 /**
@@ -104,7 +75,7 @@ export function registerSkillResources(
  */
 function registerAllSkillsCollection(
   server: McpServer,
-  skillMap: Map<string, SkillMetadata>
+  skillState: SkillState
 ): void {
   server.registerResource(
     "All Skills",
@@ -116,7 +87,7 @@ function registerAllSkillsCollection(
     async () => {
       const contents = [];
 
-      for (const [name, skill] of skillMap) {
+      for (const [name, skill] of skillState.skillMap) {
         try {
           const content = loadSkillContent(skill.path);
           contents.push({
@@ -136,58 +107,79 @@ function registerAllSkillsCollection(
 }
 
 /**
- * Register collection resources for each skill's files.
+ * Register a template for individual skill SKILL.md resources.
  *
- * URI: skill://{skillName}/
+ * URI Pattern: skill://{skillName}
  *
- * Returns all files within a skill directory in one request.
+ * Uses a template with a list callback to dynamically return available skills.
  */
-function registerSkillFileCollections(
+function registerSkillTemplate(
   server: McpServer,
-  skillMap: Map<string, SkillMetadata>
+  skillState: SkillState
 ): void {
-  for (const [name, skill] of skillMap) {
-    const uri = `skill://${encodeURIComponent(name)}/`;
-    const skillDir = path.dirname(skill.path);
+  server.registerResource(
+    "Skill",
+    new ResourceTemplate("skill://{skillName}", {
+      list: async () => {
+        // Dynamically return current skills
+        const resources: Array<{ uri: string; name: string; mimeType: string; description?: string }> = [];
 
-    server.registerResource(
-      `${name} (all files)`,
-      uri,
-      {
-        mimeType: "text/plain",
-        description: `Collection of all files in the ${name} skill directory.`,
-      },
-      async () => {
-        const files = listSkillFiles(skillDir);
-        const contents = [];
-
-        for (const file of files) {
-          const fullPath = path.resolve(skillDir, file);
-
-          try {
-            const stat = fs.statSync(fullPath);
-
-            // Skip files that are too large
-            if (stat.size > MAX_FILE_SIZE) {
-              continue;
-            }
-
-            const content = fs.readFileSync(fullPath, "utf-8");
-            contents.push({
-              uri: `skill://${encodeURIComponent(name)}/${file}`,
-              mimeType: getMimeType(file),
-              text: content,
-            });
-          } catch (error) {
-            // Skip files that fail to read
-            console.error(`Failed to read "${file}" in skill "${name}":`, error);
-          }
+        for (const [name, skill] of skillState.skillMap) {
+          resources.push({
+            uri: `skill://${encodeURIComponent(name)}`,
+            name,
+            mimeType: "text/markdown",
+            description: skill.description,
+          });
         }
 
-        return { contents };
+        return { resources };
+      },
+      complete: {
+        skillName: (value: string) => {
+          const names = Array.from(skillState.skillMap.keys());
+          return names.filter((name) => name.toLowerCase().startsWith(value.toLowerCase()));
+        },
+      },
+    }),
+    {
+      mimeType: "text/markdown",
+      description: "SKILL.md content for a skill",
+    },
+    async (resourceUri) => {
+      // Extract skill name from URI
+      const uriStr = resourceUri.toString();
+      const match = uriStr.match(/^skill:\/\/([^/]+)$/);
+
+      if (!match) {
+        throw new Error(`Invalid skill URI: ${uriStr}`);
       }
-    );
-  }
+
+      const skillName = decodeURIComponent(match[1]);
+      const skill = skillState.skillMap.get(skillName);
+
+      if (!skill) {
+        const available = Array.from(skillState.skillMap.keys()).join(", ");
+        throw new Error(`Skill "${skillName}" not found. Available: ${available || "none"}`);
+      }
+
+      try {
+        const content = loadSkillContent(skill.path);
+        return {
+          contents: [
+            {
+              uri: uriStr,
+              mimeType: "text/markdown",
+              text: content,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to load skill "${skillName}": ${message}`);
+      }
+    }
+  );
 }
 
 /**
@@ -197,22 +189,16 @@ function registerSkillFileCollections(
  */
 function registerSkillFileTemplate(
   server: McpServer,
-  skillMap: Map<string, SkillMetadata>
+  skillState: SkillState
 ): void {
-  // Create a completer for skill names
-  const skillNameCompleter = (value: string) => {
-    const names = Array.from(skillMap.keys());
-    return names.filter((name) => name.toLowerCase().startsWith(value.toLowerCase()));
-  };
-
   server.registerResource(
     "Skill File",
     new ResourceTemplate("skill://{skillName}/{+filePath}", {
       list: async () => {
-        // Return all listable skill files
+        // Return all listable skill files (dynamic based on current skillMap)
         const resources: Array<{ uri: string; name: string; mimeType: string }> = [];
 
-        for (const [name, skill] of skillMap) {
+        for (const [name, skill] of skillState.skillMap) {
           const skillDir = path.dirname(skill.path);
           const files = listSkillFiles(skillDir);
 
@@ -229,7 +215,10 @@ function registerSkillFileTemplate(
         return { resources };
       },
       complete: {
-        skillName: skillNameCompleter,
+        skillName: (value: string) => {
+          const names = Array.from(skillState.skillMap.keys());
+          return names.filter((name) => name.toLowerCase().startsWith(value.toLowerCase()));
+        },
       },
     }),
     {
@@ -248,9 +237,9 @@ function registerSkillFileTemplate(
       const skillName = decodeURIComponent(match[1]);
       const filePath = match[2];
 
-      const skill = skillMap.get(skillName);
+      const skill = skillState.skillMap.get(skillName);
       if (!skill) {
-        const available = Array.from(skillMap.keys()).join(", ");
+        const available = Array.from(skillState.skillMap.keys()).join(", ");
         throw new Error(`Skill "${skillName}" not found. Available: ${available || "none"}`);
       }
 

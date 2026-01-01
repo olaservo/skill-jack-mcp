@@ -3,6 +3,9 @@
  *
  * - skill: Load and activate a skill by name (returns SKILL.md content)
  * - skill-resource: Read files within a skill directory (scripts/, references/, assets/, etc.)
+ *
+ * Tools reference a shared SkillState object to support dynamic skill updates
+ * when MCP roots change.
  */
 
 import * as fs from "node:fs";
@@ -11,6 +14,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { SkillMetadata, loadSkillContent } from "./skill-discovery.js";
+
+/**
+ * Shared state for dynamic skill management.
+ * Tools reference this state object, allowing updates when roots change.
+ */
+export interface SkillState {
+  skillMap: Map<string, SkillMetadata>;
+  instructions: string;
+}
 
 /**
  * Input schema for the skill tool.
@@ -23,11 +35,11 @@ const SkillSchema = z.object({
  * Register the "skill" tool with the MCP server.
  *
  * @param server - The McpServer instance
- * @param skillMap - Map from skill name to metadata
+ * @param skillState - Shared state object (allows dynamic updates)
  */
 export function registerSkillTool(
   server: McpServer,
-  skillMap: Map<string, SkillMetadata>
+  skillState: SkillState
 ): void {
   server.registerTool(
     "skill",
@@ -46,10 +58,10 @@ export function registerSkillTool(
     },
     async (args): Promise<CallToolResult> => {
       const { name } = SkillSchema.parse(args);
-      const skill = skillMap.get(name);
+      const skill = skillState.skillMap.get(name);
 
       if (!skill) {
-        const availableSkills = Array.from(skillMap.keys()).join(", ");
+        const availableSkills = Array.from(skillState.skillMap.keys()).join(", ");
         return {
           content: [
             {
@@ -87,7 +99,7 @@ export function registerSkillTool(
   );
 
   // Register the skill-resource tool
-  registerSkillResourceTool(server, skillMap);
+  registerSkillResourceTool(server, skillState);
 }
 
 /**
@@ -177,11 +189,11 @@ export function listSkillFiles(skillDir: string, subPath: string = "", depth: nu
  * following the Agent Skills spec for progressive disclosure of resources.
  *
  * @param server - The McpServer instance
- * @param skillMap - Map from skill name to metadata
+ * @param skillState - Shared state object (allows dynamic updates)
  */
 function registerSkillResourceTool(
   server: McpServer,
-  skillMap: Map<string, SkillMetadata>
+  skillState: SkillState
 ): void {
   server.registerTool(
     "skill-resource",
@@ -200,10 +212,10 @@ function registerSkillResourceTool(
     },
     async (args): Promise<CallToolResult> => {
       const { skill: skillName, path: resourcePath } = SkillResourceSchema.parse(args);
-      const skill = skillMap.get(skillName);
+      const skill = skillState.skillMap.get(skillName);
 
       if (!skill) {
-        const availableSkills = Array.from(skillMap.keys()).join(", ");
+        const availableSkills = Array.from(skillState.skillMap.keys()).join(", ");
         return {
           content: [
             {

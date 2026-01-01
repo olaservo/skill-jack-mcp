@@ -3,27 +3,27 @@
  * Skill Jack MCP - "I know kung fu."
  *
  * MCP server that jacks Agent Skills directly into your LLM's brain.
+ * Now with MCP Roots support for dynamic workspace skill discovery.
  *
  * Usage:
- *   skill-jack-mcp /path/to/skills
+ *   skill-jack-mcp                    # Uses roots from client
+ *   skill-jack-mcp /path/to/skills    # Fallback directory
  *   SKILLS_DIR=/path/to/skills skill-jack-mcp
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as path from "node:path";
-import {
-  discoverSkills,
-  generateInstructions,
-  createSkillMap,
-} from "./skill-discovery.js";
-import { registerSkillTool } from "./skill-tool.js";
+import { generateInstructions } from "./skill-discovery.js";
+import { registerSkillTool, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
+import { syncSkills } from "./roots-handler.js";
 
 /**
- * Get the skills directory from command line args or environment.
+ * Get the fallback skills directory from command line args or environment.
+ * This is now optional - skills can be discovered from client roots.
  */
-function getSkillsDir(): string | null {
+function getFallbackSkillsDir(): string | null {
   // Check command line argument first
   const args = process.argv.slice(2);
   if (args.length > 0 && args[0] && !args[0].startsWith("-")) {
@@ -39,25 +39,27 @@ function getSkillsDir(): string | null {
   return null;
 }
 
-async function main() {
-  const skillsDir = getSkillsDir();
+/**
+ * Shared state for dynamic skill management.
+ * Tools and resources reference this state, allowing updates when roots change.
+ */
+const skillState: SkillState = {
+  skillMap: new Map(),
+  instructions: "",
+};
 
-  if (!skillsDir) {
-    console.error("Usage: skill-jack-mcp <skills-directory>");
-    console.error("   or: SKILLS_DIR=/path/to/skills skill-jack-mcp");
-    process.exit(1);
+async function main() {
+  const fallbackSkillsDir = getFallbackSkillsDir();
+
+  // Log startup mode
+  if (fallbackSkillsDir) {
+    console.error(`Fallback skills directory: ${fallbackSkillsDir}`);
+  } else {
+    console.error("No fallback skills directory configured (will use roots only)");
   }
 
-  console.error(`Discovering skills from: ${skillsDir}`);
-
-  // Discover skills and generate instructions
-  const skills = discoverSkills(skillsDir);
-  console.error(`Found ${skills.length} skill(s): ${skills.map((s) => s.name).join(", ") || "none"}`);
-
-  const instructions = generateInstructions(skills);
-  const skillMap = createSkillMap(skills);
-
-  // Create the MCP server
+  // Create the MCP server with initial empty instructions
+  // Instructions will be updated when skills are discovered
   const server = new McpServer(
     {
       name: "skill-jack-mcp",
@@ -68,15 +70,34 @@ async function main() {
         tools: {},
         resources: { listChanged: true },
       },
-      instructions,
+      // Start with minimal instructions; updated after roots discovery
+      instructions: generateInstructions([]),
     }
   );
 
-  // Register the skill tool
-  registerSkillTool(server, skillMap);
+  // Register tools and resources that reference the shared skillState
+  // These will use the current skillMap, which gets updated dynamically
+  registerSkillTool(server, skillState);
+  registerSkillResources(server, skillState);
 
-  // Register skill resources
-  registerSkillResources(server, skillMap);
+  // Set up post-initialization handler for roots discovery
+  // Pattern from .claude/skills/mcp-server-ts/snippets/server/index.ts
+  server.server.oninitialized = async () => {
+    // Delay to ensure notifications/initialized handler finishes
+    // (per MCP reference implementation)
+    setTimeout(() => {
+      syncSkills(server, fallbackSkillsDir, (newSkillMap, newInstructions) => {
+        // Update shared state
+        skillState.skillMap = newSkillMap;
+        skillState.instructions = newInstructions;
+
+        const skillNames = Array.from(newSkillMap.keys());
+        console.error(
+          `Skills updated: ${skillNames.join(", ") || "none"}`
+        );
+      });
+    }, 350);
+  };
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();
