@@ -1,6 +1,8 @@
 # Skill Jack MCP
 
-An MCP server that jacks [Agent Skills](https://agentskills.dev) directly into your LLM's brain.
+An MCP server that jacks [Agent Skills](https://agentskills.io) directly into your LLM's brain.
+
+> **Recommended:** For best results, use an [MCP client](https://modelcontextprotocol.io/clients) that supports server instructions. This allows the LLM to see available skills in its system prompt, enabling automatic skill discovery and activation. Without this support, the model will still be able to call these tools, but you might need to provide more explicit instructions on what skills are available and the intended activation patterns.
 
 ## Features
 
@@ -52,7 +54,7 @@ skill-jack-mcp "C:/Users/you/skills"
 
 ## How It Works
 
-The server implements the [Agent Skills](https://agentskills.dev) progressive disclosure pattern:
+The server implements the [Agent Skills](https://agentskills.io) progressive disclosure pattern:
 
 1. **At startup**: Discovers skills from configured directory
 2. **On connection**: Server instructions (with skill metadata) are sent in the initialize response
