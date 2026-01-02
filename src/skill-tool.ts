@@ -112,7 +112,7 @@ const SkillResourceSchema = z.object({
   skill: z.string().describe("Skill name"),
   path: z
     .string()
-    .describe("Relative path (e.g., 'snippets/tool.ts'). Empty string lists all files."),
+    .describe("Relative path to file or directory. Examples: 'snippets/tool.ts' (single file), 'templates' (all files in directory), '' (list available files)."),
 });
 
 // Security constants (exported for reuse in skill-resources.ts)
