@@ -4,10 +4,10 @@ An MCP server that jacks [Agent Skills](https://agentskills.dev) directly into y
 
 ## Features
 
-- **Dynamic Skill Discovery** - Discovers skills from MCP Roots (client workspace) or fallback directory
-- **Server Instructions** - Injects skill metadata into the client's system prompt
+- **Dynamic Skill Discovery** - Discovers skills from MCP Roots (client workspace) or fallback directory if not supported
+- **Server Instructions** - Injects skill metadata into the client's system prompt (for clients supporting instructions)
 - **Skill Tool** - Load full skill content on demand (progressive disclosure)
-- **MCP Resources** - Access skills via `skill://` URIs with batch collection support
+- **MCP Resources** - Access skills via `skill://` URIs with batch collection support (for clients supporting resources)
 - **Resource Subscriptions** - Real-time file watching with `notifications/resources/updated`
 - **Live Updates** - Re-discovers skills when workspace roots change
 
@@ -133,7 +133,7 @@ This follows the Agent Skills spec's progressive disclosure pattern - resources 
 
 ## Resources
 
-Skills are also accessible via MCP Resources using `skill://` URIs.
+Skills are also accessible via MCP [Resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources#resources) using `skill://` URIs.
 
 ### URI Patterns
 
@@ -194,7 +194,7 @@ Not protected against:
 
 ## Server Instructions Format
 
-The server generates instructions that include a usage preamble and skill metadata:
+The server generates [instructions](https://blog.modelcontextprotocol.io/posts/2025-11-03-using-server-instructions/) that include a usage preamble and skill metadata:
 
 ```markdown
 # Skills
@@ -210,11 +210,13 @@ When a user's task matches a skill description below: 1) activate it, 2) follow 
 </available_skills>
 ```
 
+These are loaded into the model's system prompt by [clients](https://modelcontextprotocol.io/clients) that support instructions.
+
 ## Skill Discovery
 
 ### From MCP Roots
 
-When the client supports roots, the server scans each workspace root for:
+When the client supports MCP [Roots](https://modelcontextprotocol.io/specification/2025-11-25/client/roots), the server scans each workspace root for:
 - `{root}/.claude/skills/`
 - `{root}/skills/`
 
@@ -240,3 +242,4 @@ npx @modelcontextprotocol/inspector@latest node dist/index.js /path/to/skills
 
 - [Agent Skills Specification](https://agentskills.dev)
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
+- [Example MCP Clients](https://modelcontextprotocol.io/clients)
