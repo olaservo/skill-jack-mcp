@@ -14,6 +14,20 @@ An MCP server that jacks [Agent Skills](https://agentskills.dev) directly into y
 ## Installation
 
 ```bash
+npm install @olaservo/skill-jack-mcp
+```
+
+Or run directly with npx:
+
+```bash
+npx @olaservo/skill-jack-mcp
+```
+
+### From Source
+
+```bash
+git clone https://github.com/olaservo/skill-jack-mcp.git
+cd skill-jack-mcp
 npm install
 npm run build
 ```
