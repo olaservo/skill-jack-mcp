@@ -34,9 +34,18 @@ npm run build
 
 ## Usage
 
-### With Skills Directory (Recommended)
+The server discovers skills from two sources:
 
-Configure a skills directory to ensure skills appear in the system prompt:
+| Source | What it is | When discovered | In system prompt? |
+|--------|-----------|-----------------|-------------------|
+| **Skills directory** | A fixed path you configure (global skills) | At startup | ✓ Yes |
+| **MCP Roots** | Workspace folders from your MCP client (project-specific skills) | After initialization | ✗ No (tools only) |
+
+Skills from both sources are merged, with the configured directory taking precedence on name conflicts.
+
+### Skills Directory (Global Skills)
+
+Configure a skills directory for skills you want available everywhere:
 
 ```bash
 # Pass skills directory as argument
@@ -53,17 +62,22 @@ The server scans the directory and its `.claude/skills/` and `skills/` subdirect
 skill-jack-mcp "C:/Users/you/skills"
 ```
 
-### With MCP Roots (Additional)
+### MCP Roots (Project-Specific Skills)
 
-If your [MCP client supports Roots](https://modelcontextprotocol.io/clients), skills are also discovered from workspace roots after initialization. These are available via tools but not in the system prompt (see [timing notes](#important-roots-vs-instructions-timing)).
+If your [MCP client supports Roots](https://modelcontextprotocol.io/clients), the server also discovers skills from your current workspace. For example, when Claude Code opens a project folder, that folder becomes a "root".
+
+The server scans each root for:
+- `{root}/.claude/skills/`
+- `{root}/skills/`
+
+This lets you add project-specific skills that are only available when working in that project.
 
 ```bash
-# Run without arguments to use only roots (no system prompt skills)
-skill-jack-mcp
-
-# Or combine with a skills directory for both
-skill-jack-mcp /path/to/skills
+# Combine global skills directory with project-specific roots
+skill-jack-mcp /path/to/global/skills
 ```
+
+**Note**: Skills from roots are only available via tools, not in the system prompt (see [timing notes](#important-roots-vs-instructions-timing)).
 
 ## How It Works
 
@@ -248,9 +262,11 @@ When the client supports MCP [Roots](https://modelcontextprotocol.io/specificati
 
 These skills are available via tools and resources, but not in the system prompt (see [Roots vs Instructions Timing](#important-roots-vs-instructions-timing)).
 
-### Naming Conflicts
+### Skill Merging and Naming
 
-If the same skill name exists in multiple roots, it's prefixed with the root name (e.g., `project-a:commit`).
+Skills from both sources are merged:
+- **Configured directory wins**: If a skill name exists in both, the configured directory version is used
+- **Roots conflicts**: If the same skill name exists in multiple roots, it's prefixed with the root name (e.g., `project-a:commit`)
 
 ## Testing
 
