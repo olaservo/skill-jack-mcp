@@ -13,11 +13,12 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import * as fs from "node:fs";
 import * as path from "node:path";
-import { generateInstructions } from "./skill-discovery.js";
+import { discoverSkills, generateInstructions, createSkillMap } from "./skill-discovery.js";
 import { registerSkillTool, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
-import { syncSkills } from "./roots-handler.js";
+import { syncSkills, SKILL_SUBDIRS } from "./roots-handler.js";
 import {
   createSubscriptionManager,
   registerSubscriptionHandlers,
@@ -54,6 +55,34 @@ const skillState: SkillState = {
 };
 
 /**
+ * Discover skills synchronously from fallback directory.
+ * Checks both the directory itself and SKILL_SUBDIRS subdirectories.
+ * Used at startup to populate initial instructions before roots are available.
+ */
+function discoverSkillsFromFallback(fallbackDir: string | null): ReturnType<typeof discoverSkills> {
+  if (!fallbackDir) {
+    return [];
+  }
+
+  const allSkills: ReturnType<typeof discoverSkills> = [];
+
+  // Check if the fallback directory itself contains skills
+  const directSkills = discoverSkills(fallbackDir);
+  allSkills.push(...directSkills);
+
+  // Also check SKILL_SUBDIRS subdirectories
+  for (const subdir of SKILL_SUBDIRS) {
+    const skillsDir = path.join(fallbackDir, subdir);
+    if (fs.existsSync(skillsDir)) {
+      const subdirSkills = discoverSkills(skillsDir);
+      allSkills.push(...subdirSkills);
+    }
+  }
+
+  return allSkills;
+}
+
+/**
  * Subscription manager for resource file watching.
  */
 const subscriptionManager = createSubscriptionManager();
@@ -68,8 +97,14 @@ async function main() {
     console.error("No fallback skills directory configured (will use roots only)");
   }
 
-  // Create the MCP server with initial empty instructions
-  // Instructions will be updated when skills are discovered
+  // Discover skills synchronously at startup for initial instructions
+  // This ensures the initialize response includes skills before roots are available
+  const initialSkills = discoverSkillsFromFallback(fallbackSkillsDir);
+  skillState.skillMap = createSkillMap(initialSkills);
+  skillState.instructions = generateInstructions(initialSkills);
+  console.error(`Initial skills discovered: ${initialSkills.length}`);
+
+  // Create the MCP server with pre-discovered skills in instructions
   const server = new McpServer(
     {
       name: "skill-jack-mcp",
@@ -80,8 +115,8 @@ async function main() {
         tools: {},
         resources: { subscribe: true, listChanged: true },
       },
-      // Start with minimal instructions; updated after roots discovery
-      instructions: generateInstructions([]),
+      // Include skills discovered from fallback directory
+      instructions: skillState.instructions,
     }
   );
 

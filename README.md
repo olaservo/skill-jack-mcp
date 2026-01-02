@@ -4,12 +4,12 @@ An MCP server that jacks [Agent Skills](https://agentskills.dev) directly into y
 
 ## Features
 
-- **Dynamic Skill Discovery** - Discovers skills from MCP Roots (client workspace) or fallback directory if not supported
+- **Dynamic Skill Discovery** - Discovers skills from configured directory at startup, with additional discovery from MCP Roots after initialization
 - **Server Instructions** - Injects skill metadata into the client's system prompt (for clients supporting instructions)
 - **Skill Tool** - Load full skill content on demand (progressive disclosure)
 - **MCP Resources** - Access skills via `skill://` URIs with batch collection support (for clients supporting resources)
 - **Resource Subscriptions** - Real-time file watching with `notifications/resources/updated`
-- **Live Updates** - Re-discovers skills when workspace roots change
+- **Live Updates** - Re-discovers skills when workspace roots change (updates tools, but not system prompt)
 
 ## Installation
 
@@ -34,20 +34,9 @@ npm run build
 
 ## Usage
 
-### With MCP Roots (Recommended)
+### With Skills Directory (Recommended)
 
-If your [MCP client supports Roots](https://modelcontextprotocol.io/clients), skills are discovered automatically from your workspace:
-
-```bash
-# No arguments needed - discovers from client workspace
-skill-jack-mcp
-```
-
-The server scans `.claude/skills/` and `skills/` directories in each workspace root.
-
-### With Fallback Directory
-
-For clients without Roots support, or to provide a default skills location:
+Configure a skills directory to ensure skills appear in the system prompt:
 
 ```bash
 # Pass skills directory as argument
@@ -57,38 +46,66 @@ skill-jack-mcp /path/to/skills
 SKILLS_DIR=/path/to/skills skill-jack-mcp
 ```
 
+The server scans the directory and its `.claude/skills/` and `skills/` subdirectories.
+
 **Windows note**: Use forward slashes in paths when using with MCP Inspector:
 ```bash
 skill-jack-mcp "C:/Users/you/skills"
+```
+
+### With MCP Roots (Additional)
+
+If your [MCP client supports Roots](https://modelcontextprotocol.io/clients), skills are also discovered from workspace roots after initialization. These are available via tools but not in the system prompt (see [timing notes](#important-roots-vs-instructions-timing)).
+
+```bash
+# Run without arguments to use only roots (no system prompt skills)
+skill-jack-mcp
+
+# Or combine with a skills directory for both
+skill-jack-mcp /path/to/skills
 ```
 
 ## How It Works
 
 The server implements the Agent Skills progressive disclosure pattern with MCP Roots support:
 
-1. **On connection**: Server requests workspace roots from client (or uses fallback directory)
-2. **Discovery**: Scans roots for `.claude/skills/` and `skills/` directories
-3. **Instructions**: Generates `<available_skills>` XML with discovered skill metadata
+1. **At startup**: Discovers skills from configured skills directory
+2. **On connection**: Server instructions (with skill metadata) are sent in the initialize response
+3. **After initialization**: Server requests workspace roots from client and updates available skills
 4. **On tool call**: Agent calls `skill` tool to load full SKILL.md content
 5. **Live updates**: Re-discovers when client's workspace roots change
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ MCP Client connects                                      │
+│ Server starts                                            │
+│   • Discovers skills from configured directory           │
+│   • Generates initial instructions with skill metadata   │
+│   ↓                                                      │
+│ MCP Client connects (initialize request/response)        │
+│   • Server instructions included in response             │
+│   ↓                                                      │
+│ Client sends initialized notification                    │
 │   ↓                                                      │
 │ Server requests roots from client                        │
 │   • Scans .claude/skills/ and skills/ in each root      │
-│   • Falls back to SKILLS_DIR if roots not supported      │
+│   • Updates skill tools (but cannot update instructions) │
 │   ↓                                                      │
 │ LLM sees skill metadata in system prompt                 │
-│   ↓                                                      │
 │ LLM calls "skill" tool with skill name                   │
-│   ↓                                                      │
-│ Server returns full SKILL.md content                     │
 │   ↓                                                      │
 │ (Workspace changes → roots/list_changed → re-discover)   │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### Important: Roots vs Instructions Timing
+
+Per the [MCP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle), server `instructions` are sent in the initialize response, **before** the client sends the `initialized` notification. Roots can only be requested **after** initialization completes.
+
+This means:
+- **Skills from configured directory**: Appear in server instructions (system prompt) ✓
+- **Skills from MCP Roots**: Only available via tools and resources after initialization
+
+**Recommendation**: Always provide a skills directory argument if you want skills to appear in the LLM's system prompt. Roots are useful for dynamic workspace-specific skills that can be accessed via tools.
 
 ## Tools
 
@@ -214,15 +231,22 @@ These are loaded into the model's system prompt by [clients](https://modelcontex
 
 ## Skill Discovery
 
-### From MCP Roots
+### From Configured Directory (at startup)
 
-When the client supports MCP [Roots](https://modelcontextprotocol.io/specification/2025-11-25/client/roots), the server scans each workspace root for:
+Skills are discovered synchronously at startup from the configured directory. The server checks:
+- The directory itself for skill subdirectories
+- `.claude/skills/` subdirectory
+- `skills/` subdirectory
+
+These skills are included in server instructions (system prompt).
+
+### From MCP Roots (after initialization)
+
+When the client supports MCP [Roots](https://modelcontextprotocol.io/specification/2025-11-25/client/roots), the server also scans each workspace root for:
 - `{root}/.claude/skills/`
 - `{root}/skills/`
 
-### From Fallback Directory
-
-When roots aren't available, the server scans the configured directory.
+These skills are available via tools and resources, but not in the system prompt (see [Roots vs Instructions Timing](#important-roots-vs-instructions-timing)).
 
 ### Naming Conflicts
 

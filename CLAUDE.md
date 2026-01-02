@@ -30,8 +30,11 @@ src/
 ## Architecture
 
 1. **Shared state pattern**: Tools/resources reference `SkillState` object, updated when roots change
-2. **Post-init discovery**: `server.server.oninitialized` triggers `syncSkills()` after client capabilities known
-3. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
+2. **Startup discovery**: Skills discovered synchronously from configured directory before server starts (for system prompt)
+3. **Post-init discovery**: `server.server.oninitialized` triggers `syncSkills()` for roots-based updates (tools only)
+4. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
+
+**Important timing note**: Server `instructions` are sent in the initialize response, before roots are available. Skills from roots cannot appear in the system prompt - only skills discovered at startup from the configured directory are included.
 
 ## Modification Guide
 

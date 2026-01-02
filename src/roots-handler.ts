@@ -24,7 +24,7 @@ import {
 /**
  * Skill discovery locations within each root.
  */
-const SKILL_SUBDIRS = [".claude/skills", "skills"];
+export const SKILL_SUBDIRS = [".claude/skills", "skills"];
 
 /**
  * Convert a file:// URI to a filesystem path.
@@ -134,10 +134,15 @@ export async function syncSkills(
       const { skills } = discoverSkillsFromRoots(roots);
       console.error(`Discovered ${skills.length} skill(s) from roots`);
 
-      const skillMap = createSkillMap(skills);
-      const instructions = generateInstructions(skills);
-
-      onSkillsChanged(skillMap, instructions);
+      // If no skills found from roots, try fallback directory
+      if (skills.length === 0 && fallbackDir) {
+        console.error("No skills found from roots, trying fallback directory...");
+        useFallbackDirectory(fallbackDir, onSkillsChanged);
+      } else {
+        const skillMap = createSkillMap(skills);
+        const instructions = generateInstructions(skills);
+        onSkillsChanged(skillMap, instructions);
+      }
 
       // Listen for roots changes if client supports listChanged
       if (capabilities.roots.listChanged) {
@@ -192,6 +197,8 @@ function setupRootsChangeHandler(
 
 /**
  * Use the fallback directory when roots are unavailable.
+ * Checks both the directory itself and SKILL_SUBDIRS subdirectories
+ * to match roots discovery behavior.
  */
 function useFallbackDirectory(
   fallbackDir: string | null,
@@ -206,11 +213,26 @@ function useFallbackDirectory(
   console.error(`Using fallback skills directory: ${fallbackDir}`);
 
   try {
-    const skills = discoverSkills(fallbackDir);
-    console.error(`Found ${skills.length} skill(s) in fallback directory`);
+    const allSkills: SkillMetadata[] = [];
 
-    const skillMap = createSkillMap(skills);
-    const instructions = generateInstructions(skills);
+    // First, check if the fallback directory itself contains skills
+    // (for backwards compatibility when user passes the exact skills folder)
+    const directSkills = discoverSkills(fallbackDir);
+    allSkills.push(...directSkills);
+
+    // Also check SKILL_SUBDIRS subdirectories (matching roots discovery behavior)
+    for (const subdir of SKILL_SUBDIRS) {
+      const skillsDir = path.join(fallbackDir, subdir);
+      if (fs.existsSync(skillsDir)) {
+        const subdirSkills = discoverSkills(skillsDir);
+        allSkills.push(...subdirSkills);
+      }
+    }
+
+    console.error(`Found ${allSkills.length} skill(s) in fallback directory`);
+
+    const skillMap = createSkillMap(allSkills);
+    const instructions = generateInstructions(allSkills);
 
     onSkillsChanged(skillMap, instructions);
   } catch (error) {
