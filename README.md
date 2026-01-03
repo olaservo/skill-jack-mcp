@@ -150,7 +150,6 @@ Skills are also accessible via MCP [Resources](https://modelcontextprotocol.io/s
 
 | URI | Returns |
 |-----|---------|
-| `skill://` | All SKILL.md contents (collection) |
 | `skill://{name}` | Single skill's SKILL.md content |
 | `skill://{name}/` | All files in skill directory (collection) |
 | `skill://{name}/{path}` | Specific file within skill |
