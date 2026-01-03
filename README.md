@@ -35,17 +35,22 @@ npm run build
 
 ## Usage
 
-Configure a skills directory containing your Agent Skills:
+Configure one or more skills directories containing your Agent Skills:
 
 ```bash
-# Pass skills directory as argument
+# Single directory
 skill-jack-mcp /path/to/skills
 
-# Or use environment variable
+# Multiple directories (separate args or comma-separated)
+skill-jack-mcp /path/to/skills /path/to/more/skills
+skill-jack-mcp /path/to/skills,/path/to/more/skills
+
+# Using environment variable (comma-separated for multiple)
 SKILLS_DIR=/path/to/skills skill-jack-mcp
+SKILLS_DIR=/path/to/skills,/path/to/more/skills skill-jack-mcp
 ```
 
-The server scans the directory and its `.claude/skills/` and `skills/` subdirectories for skills.
+Each directory is scanned along with its `.claude/skills/` and `skills/` subdirectories for skills. Duplicate skill names are handled by keeping the first occurrence.
 
 **Windows note**: Use forward slashes in paths when using with MCP Inspector:
 ```bash
@@ -56,14 +61,14 @@ skill-jack-mcp "C:/Users/you/skills"
 
 The server implements the [Agent Skills](https://agentskills.io) progressive disclosure pattern:
 
-1. **At startup**: Discovers skills from configured directory
+1. **At startup**: Discovers skills from configured directories
 2. **On connection**: Server instructions (with skill metadata) are sent in the initialize response
 3. **On tool call**: Agent calls `skill` tool to load full SKILL.md content
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Server starts                                            │
-│   • Discovers skills from configured directory           │
+│   • Discovers skills from configured directories         │
 │   • Generates instructions with skill metadata           │
 │   ↓                                                      │
 │ MCP Client connects                                      │
@@ -203,7 +208,7 @@ These are loaded into the model's system prompt by [clients](https://modelcontex
 
 ## Skill Discovery
 
-Skills are discovered at startup from the configured directory. The server checks:
+Skills are discovered at startup from the configured directories. For each directory, the server checks:
 - The directory itself for skill subdirectories
 - `.claude/skills/` subdirectory
 - `skills/` subdirectory

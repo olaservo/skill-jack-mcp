@@ -28,7 +28,7 @@ src/
 
 ## Architecture
 
-1. **Startup discovery**: Skills discovered from configured directory at startup
+1. **Startup discovery**: Skills discovered from configured directories at startup (supports multiple)
 2. **Server instructions**: Skill metadata included in initialize response (system prompt)
 3. **Progressive disclosure**: Full SKILL.md loaded on demand via `skill` tool
 4. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
