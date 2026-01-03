@@ -159,11 +159,20 @@ export function loadSkillContent(skillPath: string): string {
 
 /**
  * Create a map from skill name to skill metadata for fast lookup.
+ * Uses first-wins behavior: if duplicate names exist, the first occurrence is kept.
  */
 export function createSkillMap(skills: SkillMetadata[]): Map<string, SkillMetadata> {
   const map = new Map<string, SkillMetadata>();
   for (const skill of skills) {
-    map.set(skill.name, skill);
+    if (map.has(skill.name)) {
+      const existing = map.get(skill.name)!;
+      console.error(
+        `Warning: Duplicate skill name "${skill.name}" found at ${skill.path} - ` +
+        `keeping first occurrence from ${existing.path}`
+      );
+    } else {
+      map.set(skill.name, skill);
+    }
   }
   return map;
 }
