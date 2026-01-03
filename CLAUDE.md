@@ -84,10 +84,6 @@ capabilities: {
 
 ## Testing
 
-See `TEST_PLAN.md` for comprehensive test cases covering:
-- Server initialization and capabilities
-- Tool functionality (skill, skill-resource)
-- Resource access via skill:// URIs
-- Subscriptions and notifications
-- Dynamic skill discovery (add/modify/remove)
-- Edge cases and security
+- Tests can be executed using the MCP Inspector and Playwright MCP.
+- Check for a `TEST_PLAN.md` for test cases.  If no test plan exists create a set of test scenarios in a file called `TEST_PLAN.md`
+- Once testing is complete, always clean up the `TEST_PLAN.md` file and any generated or test files.
