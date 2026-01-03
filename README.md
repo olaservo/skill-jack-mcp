@@ -2,12 +2,12 @@
 
 An MCP server that jacks [Agent Skills](https://agentskills.io) directly into your LLM's brain.
 
-> **Recommended:** For best results, use an [MCP client](https://modelcontextprotocol.io/clients) that supports server instructions. This allows the LLM to see available skills in its system prompt, enabling automatic skill discovery and activation. Without this support, the model will still be able to call these tools, but you might need to provide more explicit instructions on what skills are available and the intended activation patterns.
+> **Recommended:** For best results, use an MCP client that supports `tools/listChanged` notifications (e.g., Claude Code). This enables dynamic skill discovery - when skills are added or modified, the client automatically refreshes its understanding of available skills. Server instructions provide initial context at connection time, but since they cannot be updated after the MCP handshake, the `skill` tool's dynamic description is the authoritative source for available skills.
 
 ## Features
 
-- **Skill Discovery** - Discovers skills from a configured directory at startup
-- **Server Instructions** - Injects skill metadata into the system prompt (for clients supporting instructions)
+- **Dynamic Skill Discovery** - Watches skill directories and automatically refreshes when skills change
+- **Tool List Changed Notifications** - Sends `tools/listChanged` so clients can refresh available skills
 - **Skill Tool** - Load full skill content on demand (progressive disclosure)
 - **MCP Resources** - Access skills via `skill://` URIs with batch collection support
 - **Resource Subscriptions** - Real-time file watching with `notifications/resources/updated`
@@ -59,23 +59,31 @@ skill-jack-mcp "C:/Users/you/skills"
 
 ## How It Works
 
-The server implements the [Agent Skills](https://agentskills.io) progressive disclosure pattern:
+The server implements the [Agent Skills](https://agentskills.io) progressive disclosure pattern with dynamic updates:
 
-1. **At startup**: Discovers skills from configured directories
-2. **On connection**: Server instructions (with skill metadata) are sent in the initialize response
-3. **On tool call**: Agent calls `skill` tool to load full SKILL.md content
-4. **As needed**: Agent calls `skill-resource` to load additional files (scripts, snippets, references, etc.)
+1. **At startup**: Discovers skills from configured directories and starts file watchers
+2. **On connection**: Server instructions and tool descriptions include skill metadata
+3. **On file change**: Re-discovers skills, updates tool description, sends `tools/listChanged`
+4. **On tool call**: Agent calls `skill` tool to load full SKILL.md content
+5. **As needed**: Agent calls `skill-resource` to load additional files
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Server starts                                            │
 │   • Discovers skills from configured directories         │
-│   • Generates instructions with skill metadata           │
+│   • Starts watching for SKILL.md changes                 │
 │   ↓                                                      │
 │ MCP Client connects                                      │
 │   • Server instructions included in initialize response  │
+│   • Skill tool description includes available skills     │
 │   ↓                                                      │
-│ LLM sees skill metadata in system prompt                 │
+│ LLM sees skill metadata in system prompt / tool desc     │
+│   ↓                                                      │
+│ SKILL.md added/modified/removed                          │
+│   • Server re-discovers skills                           │
+│   • Updates skill tool description                       │
+│   • Sends tools/listChanged notification                 │
+│   • Client refreshes tool definitions                    │
 │   ↓                                                      │
 │ LLM calls "skill" tool with skill name                   │
 │   ↓                                                      │
@@ -83,7 +91,6 @@ The server implements the [Agent Skills](https://agentskills.io) progressive dis
 │   ↓                                                      │
 │ LLM calls "skill-resource" for additional files          │
 │   • Scripts, snippets, references, assets, etc.          │
-│   • Loaded on-demand as the skill instructions direct    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -191,9 +198,20 @@ Not protected against:
 - Malicious content within trusted skill directories
 - Prompt injection via skill instructions (skills can influence LLM behavior by design)
 
+## Dynamic Skill Discovery
+
+The server watches skill directories for changes. When SKILL.md files are added, modified, or removed:
+
+1. Skills are re-discovered from all configured directories
+2. The `skill` tool's description is updated with current skill names and metadata
+3. `tools/listChanged` notification is sent to connected clients
+4. Clients that support this notification will refresh tool definitions
+
+**Note:** Server instructions (sent during the MCP initialization handshake) cannot be updated after connection - this is an MCP protocol limitation. The `skill` tool's description serves as the live, authoritative source of available skills for long-running sessions.
+
 ## Server Instructions Format
 
-The server generates [instructions](https://blog.modelcontextprotocol.io/posts/2025-11-03-using-server-instructions/) that include a usage preamble and skill metadata:
+The server generates [instructions](https://blog.modelcontextprotocol.io/posts/2025-11-03-using-server-instructions/) that include skill metadata. The same format is used in both server instructions (initial context) and the `skill` tool description (dynamic, refreshable):
 
 ```markdown
 # Skills
@@ -209,7 +227,7 @@ When a user's task matches a skill description below: 1) activate it, 2) follow 
 </available_skills>
 ```
 
-These are loaded into the model's system prompt by [clients](https://modelcontextprotocol.io/clients) that support instructions.
+Server instructions are loaded into the model's system prompt at connection time. For skill changes during a session, clients should support `tools/listChanged` to receive the updated tool description.
 
 ## Skill Discovery
 

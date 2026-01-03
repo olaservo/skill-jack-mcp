@@ -11,16 +11,19 @@
  *   SKILLS_DIR=/path1,/path2 skill-jack-mcp      # Multiple (comma-separated)
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import chokidar from "chokidar";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { discoverSkills, generateInstructions, createSkillMap } from "./skill-discovery.js";
-import { registerSkillTool, SkillState } from "./skill-tool.js";
+import { registerSkillTool, getToolDescription, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import {
   createSubscriptionManager,
   registerSubscriptionHandlers,
+  refreshSubscriptions,
+  SubscriptionManager,
 } from "./subscriptions.js";
 
 /**
@@ -124,6 +127,160 @@ function discoverSkillsFromDirs(skillsDirs: string[]): ReturnType<typeof discove
 }
 
 /**
+ * Debounce delay for skill directory changes (ms).
+ * Multiple rapid changes are coalesced into one refresh.
+ */
+const SKILL_REFRESH_DEBOUNCE_MS = 500;
+
+/**
+ * Refresh skills and notify clients of changes.
+ * Called when skill files change on disk.
+ *
+ * @param skillsDirs - The configured skill directories
+ * @param server - The MCP server instance
+ * @param skillTool - The registered skill tool to update
+ * @param subscriptionManager - For refreshing resource subscriptions
+ */
+function refreshSkills(
+  skillsDirs: string[],
+  server: McpServer,
+  skillTool: RegisteredTool,
+  subscriptionManager: SubscriptionManager
+): void {
+  console.error("Refreshing skills...");
+
+  // Re-discover all skills
+  const skills = discoverSkillsFromDirs(skillsDirs);
+  const oldCount = skillState.skillMap.size;
+
+  // Update shared state
+  skillState.skillMap = createSkillMap(skills);
+  skillState.instructions = generateInstructions(skills);
+
+  console.error(`Skills refreshed: ${oldCount} -> ${skills.length} skill(s)`);
+
+  // Update the skill tool description with new instructions
+  skillTool.update({
+    description: getToolDescription(skillState),
+  });
+
+  // Refresh resource subscriptions to match new skill state
+  refreshSubscriptions(subscriptionManager, skillState, (uri) => {
+    server.server.notification({
+      method: "notifications/resources/updated",
+      params: { uri },
+    });
+  });
+
+  // Notify clients that tools have changed
+  // This prompts clients to call tools/list again
+  server.sendToolListChanged();
+
+  // Also notify that resources have changed
+  server.sendResourceListChanged();
+}
+
+/**
+ * Set up file watchers on skill directories to detect changes.
+ * Watches for SKILL.md additions, modifications, and deletions.
+ *
+ * @param skillsDirs - The configured skill directories
+ * @param server - The MCP server instance
+ * @param skillTool - The registered skill tool to update
+ * @param subscriptionManager - For refreshing subscriptions
+ */
+function watchSkillDirectories(
+  skillsDirs: string[],
+  server: McpServer,
+  skillTool: RegisteredTool,
+  subscriptionManager: SubscriptionManager
+): void {
+  let refreshTimeout: NodeJS.Timeout | null = null;
+
+  const debouncedRefresh = () => {
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+    }
+    refreshTimeout = setTimeout(() => {
+      refreshTimeout = null;
+      refreshSkills(skillsDirs, server, skillTool, subscriptionManager);
+    }, SKILL_REFRESH_DEBOUNCE_MS);
+  };
+
+  // Build list of paths to watch
+  const watchPaths: string[] = [];
+  for (const dir of skillsDirs) {
+    if (fs.existsSync(dir)) {
+      watchPaths.push(dir);
+      // Also watch standard subdirectories
+      for (const subdir of SKILL_SUBDIRS) {
+        const subPath = path.join(dir, subdir);
+        if (fs.existsSync(subPath)) {
+          watchPaths.push(subPath);
+        }
+      }
+    }
+  }
+
+  if (watchPaths.length === 0) {
+    console.error("No skill directories to watch");
+    return;
+  }
+
+  console.error(`Watching for skill changes in: ${watchPaths.join(", ")}`);
+
+  const watcher = chokidar.watch(watchPaths, {
+    persistent: true,
+    ignoreInitial: true,
+    depth: 2, // Watch skill subdirectories but not too deep
+    ignored: ["**/node_modules/**", "**/.git/**"],
+    awaitWriteFinish: {
+      stabilityThreshold: 200,
+      pollInterval: 50,
+    },
+  });
+
+  // Watch for SKILL.md changes specifically
+  watcher.on("add", (filePath) => {
+    if (path.basename(filePath).toLowerCase() === "skill.md") {
+      console.error(`Skill added: ${filePath}`);
+      debouncedRefresh();
+    }
+  });
+
+  watcher.on("change", (filePath) => {
+    if (path.basename(filePath).toLowerCase() === "skill.md") {
+      console.error(`Skill modified: ${filePath}`);
+      debouncedRefresh();
+    }
+  });
+
+  watcher.on("unlink", (filePath) => {
+    if (path.basename(filePath).toLowerCase() === "skill.md") {
+      console.error(`Skill removed: ${filePath}`);
+      debouncedRefresh();
+    }
+  });
+
+  // Also watch for directory additions (new skill folders)
+  watcher.on("addDir", (dirPath) => {
+    // Check if this might be a new skill directory
+    const skillMdPath = path.join(dirPath, "SKILL.md");
+    const skillMdPathLower = path.join(dirPath, "skill.md");
+    if (fs.existsSync(skillMdPath) || fs.existsSync(skillMdPathLower)) {
+      console.error(`Skill directory added: ${dirPath}`);
+      debouncedRefresh();
+    }
+  });
+
+  watcher.on("unlinkDir", (dirPath) => {
+    // A skill directory was removed
+    console.error(`Directory removed: ${dirPath}`);
+    debouncedRefresh();
+  });
+}
+
+/**
  * Subscription manager for resource file watching.
  */
 const subscriptionManager = createSubscriptionManager();
@@ -155,7 +312,7 @@ async function main() {
     },
     {
       capabilities: {
-        tools: {},
+        tools: { listChanged: true },
         resources: { subscribe: true, listChanged: true },
       },
       instructions: skillState.instructions,
@@ -163,11 +320,14 @@ async function main() {
   );
 
   // Register tools and resources
-  registerSkillTool(server, skillState);
+  const skillTool = registerSkillTool(server, skillState);
   registerSkillResources(server, skillState);
 
   // Register subscription handlers for resource file watching
   registerSubscriptionHandlers(server, skillState, subscriptionManager);
+
+  // Set up file watchers for skill directory changes
+  watchSkillDirectories(skillsDirs, server, skillTool, subscriptionManager);
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();

@@ -10,7 +10,7 @@
 
 ```
 src/
-├── index.ts           # Entry point, server setup, stdio transport
+├── index.ts           # Entry point, server setup, file watching, stdio transport
 ├── skill-discovery.ts # YAML frontmatter parsing, XML generation
 ├── skill-tool.ts      # MCP tools: skill, skill-resource
 ├── skill-resources.ts # MCP Resources: skill:// URI scheme
@@ -26,12 +26,30 @@ src/
 **SkillMetadata** - Parsed skill info:
 - `name`, `description`, `path` (to SKILL.md)
 
+**RegisteredTool** - SDK type for dynamic tool updates:
+- Returned by `registerSkillTool()`
+- Has `update({ description })` method for refreshing tool description
+
 ## Architecture
 
 1. **Startup discovery**: Skills discovered from configured directories at startup (supports multiple)
-2. **Server instructions**: Skill metadata included in initialize response (system prompt)
-3. **Progressive disclosure**: Full SKILL.md loaded on demand via `skill` tool
-4. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
+2. **File watching**: chokidar watches skill directories for SKILL.md changes
+3. **Dynamic refresh**: On file change → re-discover → update tool description → send `tools/listChanged`
+4. **Server instructions**: Skill metadata included in initialize response (static after connection)
+5. **Tool description**: Same format as instructions, but refreshable via `tools/listChanged`
+6. **Progressive disclosure**: Full SKILL.md loaded on demand via `skill` tool
+7. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
+
+## Key Functions
+
+| Function | File | Purpose |
+|----------|------|---------|
+| `discoverSkillsFromDirs()` | index.ts | Scan directories for skills |
+| `refreshSkills()` | index.ts | Re-discover + update tool + notify clients |
+| `watchSkillDirectories()` | index.ts | Set up chokidar watchers |
+| `generateInstructions()` | skill-discovery.ts | Create XML skill list |
+| `getToolDescription()` | skill-tool.ts | Usage text + skill list for tool desc |
+| `refreshSubscriptions()` | subscriptions.ts | Update watchers when skills change |
 
 ## Modification Guide
 
@@ -40,6 +58,23 @@ src/
 | New tool | `skill-tool.ts` - use `server.registerTool()` |
 | New resource | `skill-resources.ts` - use `server.registerResource()` |
 | Skill discovery logic | `skill-discovery.ts` |
+| File watching behavior | `index.ts` - `watchSkillDirectories()` |
+| Refresh logic | `index.ts` - `refreshSkills()` |
+
+## Capabilities
+
+```typescript
+capabilities: {
+  tools: { listChanged: true },      // Dynamic tool updates
+  resources: { subscribe: true, listChanged: true }
+}
+```
+
+## Notifications Sent
+
+- `notifications/tools/list_changed` - When skills change (add/modify/remove)
+- `notifications/resources/list_changed` - When skills change
+- `notifications/resources/updated` - When subscribed resource files change
 
 ## Conventions
 
@@ -47,3 +82,14 @@ src/
 - Errors logged to stderr (stdout is MCP protocol)
 - Security: path traversal checks via `isPathWithinBase()`
 - File size limit: 10MB (`MAX_FILE_SIZE`)
+- Debouncing: 500ms for skill refresh, 100ms for resource notifications
+
+## Testing
+
+See `TEST_PLAN.md` for comprehensive test cases covering:
+- Server initialization and capabilities
+- Tool functionality (skill, skill-resource)
+- Resource access via skill:// URIs
+- Subscriptions and notifications
+- Dynamic skill discovery (add/modify/remove)
+- Edge cases and security

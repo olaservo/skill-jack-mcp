@@ -10,10 +10,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { SkillMetadata, loadSkillContent } from "./skill-discovery.js";
+import { SkillMetadata, loadSkillContent, generateInstructions } from "./skill-discovery.js";
 
 /**
  * Shared state for dynamic skill management.
@@ -34,20 +34,35 @@ const SkillSchema = z.object({
 /**
  * Register the "skill" tool with the MCP server.
  *
+ * The tool description includes the full skill discovery instructions (same format as
+ * server instructions) to enable dynamic updates via tools/listChanged notifications.
+ *
  * @param server - The McpServer instance
  * @param skillState - Shared state object (allows dynamic updates)
+ * @returns The registered tool, which can be updated when skills change
  */
+/**
+ * Generate the full tool description including usage guidance and skill list.
+ * Exported so index.ts can use it when refreshing skills.
+ */
+export function getToolDescription(skillState: SkillState): string {
+  const usage =
+    "Load a skill's full instructions. Returns the complete SKILL.md content " +
+    "with step-by-step guidance, examples, and file references to follow.\n\n";
+
+  const skills = Array.from(skillState.skillMap.values());
+  return usage + generateInstructions(skills);
+}
+
 export function registerSkillTool(
   server: McpServer,
   skillState: SkillState
-): void {
-  server.registerTool(
+): RegisteredTool {
+  const skillTool = server.registerTool(
     "skill",
     {
       title: "Activate Skill",
-      description:
-        "Load a skill's full instructions. Returns the complete SKILL.md content " +
-        "with step-by-step guidance, examples, and file references to follow.",
+      description: getToolDescription(skillState),
       inputSchema: SkillSchema,
       annotations: {
         readOnlyHint: true,
@@ -100,6 +115,8 @@ export function registerSkillTool(
 
   // Register the skill-resource tool
   registerSkillResourceTool(server, skillState);
+
+  return skillTool;
 }
 
 /**
