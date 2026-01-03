@@ -21,7 +21,6 @@ src/
 
 **SkillState** - Shared state:
 - `skillMap: Map<string, SkillMetadata>` - name → skill lookup
-- `instructions: string` - Generated XML for system prompt
 
 **SkillMetadata** - Parsed skill info:
 - `name`, `description`, `path` (to SKILL.md)
@@ -35,10 +34,9 @@ src/
 1. **Startup discovery**: Skills discovered from configured directories at startup (supports multiple)
 2. **File watching**: chokidar watches skill directories for SKILL.md changes
 3. **Dynamic refresh**: On file change → re-discover → update tool description → send `tools/listChanged`
-4. **Server instructions**: Skill metadata included in initialize response (static after connection)
-5. **Tool description**: Same format as instructions, but refreshable via `tools/listChanged`
-6. **Progressive disclosure**: Full SKILL.md loaded on demand via `skill` tool
-7. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
+4. **Tool description**: Skill metadata embedded in `skill` tool description, refreshable via `tools/listChanged`
+5. **Progressive disclosure**: Full SKILL.md loaded on demand via `skill` tool
+6. **MCP SDK patterns**: Uses `McpServer`, `ResourceTemplate`, Zod schemas for tool inputs
 
 ## Key Functions
 

@@ -21,7 +21,6 @@ import { SkillMetadata, loadSkillContent, generateInstructions } from "./skill-d
  */
 export interface SkillState {
   skillMap: Map<string, SkillMetadata>;
-  instructions: string;
 }
 
 /**

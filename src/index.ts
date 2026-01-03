@@ -16,7 +16,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import chokidar from "chokidar";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { discoverSkills, generateInstructions, createSkillMap } from "./skill-discovery.js";
+import { discoverSkills, createSkillMap } from "./skill-discovery.js";
 import { registerSkillTool, getToolDescription, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import {
@@ -78,7 +78,6 @@ function getSkillsDirs(): string[] {
  */
 const skillState: SkillState = {
   skillMap: new Map(),
-  instructions: "",
 };
 
 /**
@@ -155,7 +154,6 @@ function refreshSkills(
 
   // Update shared state
   skillState.skillMap = createSkillMap(skills);
-  skillState.instructions = generateInstructions(skills);
 
   console.error(`Skills refreshed: ${oldCount} -> ${skills.length} skill(s)`);
 
@@ -301,7 +299,6 @@ async function main() {
   // Discover skills at startup
   const skills = discoverSkillsFromDirs(skillsDirs);
   skillState.skillMap = createSkillMap(skills);
-  skillState.instructions = generateInstructions(skills);
   console.error(`Discovered ${skills.length} skill(s)`);
 
   // Create the MCP server
@@ -315,7 +312,6 @@ async function main() {
         tools: { listChanged: true },
         resources: { subscribe: true, listChanged: true },
       },
-      instructions: skillState.instructions,
     }
   );
 
