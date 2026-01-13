@@ -12,6 +12,18 @@ An MCP server that jacks [Agent Skills](https://agentskills.io) directly into yo
 - **MCP Resources** - Access skills via `skill://` URIs with batch collection support
 - **Resource Subscriptions** - Real-time file watching with `notifications/resources/updated`
 
+## Motivation
+
+This repo demonstrates a way to approach integrating skills using existing MCP primitives.
+
+MCP already has the building blocks:
+- **Tools** for on-demand skill loading (the `skill` tool with dynamically updated descriptions)
+- **Resources** for explicit skill access (`skill://` URIs)
+- **Notifications** for real-time updates (`tools/listChanged`, `resources/updated`)
+- **Prompts** for explicitly invoking skills by name (`/my-server-skill`)
+
+This approach provides separation of concerns.  Rather than every MCP server needing to embed skill handling, the server acts as a dedicated 'skill gateway'. Server authors can bundle skills alongside their MCP servers without modifying the servers themselves. If MCP registries support robust tool discovery, skill tools become discoverable like any other tool.
+
 ## Installation
 
 ```bash
