@@ -34,11 +34,11 @@ export class SessionLogger {
   private log: SessionLog;
   private logDir: string;
 
-  constructor(task: string, logDir: string = './evals/logs') {
+  constructor(task: string, logDir: string = './evals/logs', mode: string = 'mcp') {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     this.logDir = logDir;
     this.log = {
-      sessionId: `eval-${timestamp}`,
+      sessionId: `${mode}-${task}-${timestamp}`,
       task,
       startTime: new Date().toISOString(),
       status: 'success',

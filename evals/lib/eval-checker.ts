@@ -1,5 +1,6 @@
 // Eval result checker - analyzes session logs to determine pass/fail
 import type { SessionLogEntry, EvalResult } from "./metrics.js";
+import type { EvalMode } from "./options-builder.js";
 
 export interface EvalConfig {
   expectedSkillName: string;
@@ -8,9 +9,36 @@ export interface EvalConfig {
 }
 
 /**
+ * Check if a tool name is a skill activation tool
+ */
+function isSkillTool(toolName: string, mode: EvalMode): boolean {
+  if (mode === "native" || mode === "cli-native") {
+    // Native/CLI mode uses "Skill" tool
+    return toolName === "Skill";
+  } else {
+    // MCP mode uses mcp__skilljack__skill
+    return toolName.includes('skill') && !toolName.includes('skill-resource');
+  }
+}
+
+/**
+ * Check if a tool name is a skill resource tool
+ */
+function isSkillResourceTool(toolName: string, mode: EvalMode): boolean {
+  if (mode === "native" || mode === "cli-native") {
+    // Native/CLI mode - skill resources might be loaded differently
+    // For now, check if it's reading from skill directory
+    return false; // Native/CLI doesn't have separate resource tool
+  } else {
+    // MCP mode uses mcp__skilljack__skill-resource
+    return toolName.includes('skill-resource');
+  }
+}
+
+/**
  * Analyze session entries to determine eval results
  */
-export function analyzeSession(entries: SessionLogEntry[], config: EvalConfig): EvalResult {
+export function analyzeSession(entries: SessionLogEntry[], config: EvalConfig, mode: EvalMode = "mcp"): EvalResult {
   let discovered = false;
   let activated = false;
   let skillName: string | undefined;
@@ -47,13 +75,14 @@ export function analyzeSession(entries: SessionLogEntry[], config: EvalConfig): 
           }
           // Check for tool_use inside assistant message
           if (c.type === 'tool_use' && c.name) {
-            if (c.name.includes('skill-resource')) {
+            if (isSkillResourceTool(c.name, mode)) {
               resourceLoaded = true;
-            } else if (c.name.includes('skill')) {
+            } else if (isSkillTool(c.name, mode)) {
               skillToolCalled = true;
               activated = true;
-              const input = c.input as { name?: string };
-              skillName = input?.name;
+              const input = c.input as { name?: string; skill_name?: string };
+              // Native Skill tool uses skill_name, MCP uses name
+              skillName = input?.skill_name || input?.name;
             }
           }
         }
@@ -64,16 +93,14 @@ export function analyzeSession(entries: SessionLogEntry[], config: EvalConfig): 
     if (entry.type === 'tool_use') {
       const data = entry.data as { name: string; input: unknown };
 
-      // Check for MCP skill-resource tool
-      if (data.name.includes('skill-resource')) {
+      if (isSkillResourceTool(data.name, mode)) {
         resourceLoaded = true;
-      }
-      // Check for MCP skill tool (mcp__skilljack__skill or similar patterns)
-      else if (data.name.includes('skill')) {
+      } else if (isSkillTool(data.name, mode)) {
         skillToolCalled = true;
         activated = true;
-        const input = data.input as { name?: string };
-        skillName = input.name;
+        const input = data.input as { name?: string; skill_name?: string };
+        // Native Skill tool uses skill_name, MCP uses name
+        skillName = input?.skill_name || input?.name;
       }
     }
   }
