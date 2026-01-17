@@ -191,6 +191,15 @@ Each discovered skill is also registered as its own prompt (e.g., `/mcp-server-t
 
 **Example:** If you have a skill named `mcp-server-ts`, you can invoke it directly as `/mcp-server-ts`.
 
+### Content Annotations
+
+Prompt responses include MCP [content annotations](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts#embedded-resources) for proper handling:
+
+- `audience: ["assistant"]` - Content is intended for the LLM, not the user
+- `priority: 1.0` - High priority content that should be included in context
+
+Prompts return embedded resources with the skill's `skill://` URI, allowing clients to track the content source.
+
 ## Resources
 
 Skills are also accessible via MCP [Resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources#resources) using `skill://` URIs.

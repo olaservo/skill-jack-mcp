@@ -92,8 +92,12 @@ export function registerSkillPrompts(
             {
               role: "user",
               content: {
-                type: "text",
-                text: content,
+                type: "resource",
+                resource: {
+                  uri: `skill://${name}`,
+                  mimeType: "text/markdown",
+                  text: content,
+                },
                 annotations: {
                   audience: ["assistant"],
                   priority: 1.0,
@@ -120,12 +124,13 @@ export function registerSkillPrompts(
   );
 
   // 2. Register per-skill prompts (no arguments needed)
-  // Loads skill content directly for immediate use
+  // Returns embedded resource with skill:// URI (MCP-idiomatic)
   const perSkillPrompts = new Map<string, RegisteredPrompt>();
 
   for (const [name, skill] of skillState.skillMap) {
-    // Capture skill path in closure for this specific prompt
+    // Capture skill info in closure for this specific prompt
     const skillPath = skill.path;
+    const skillName = name;
     const prompt = server.registerPrompt(
       name,
       {
@@ -141,8 +146,12 @@ export function registerSkillPrompts(
               {
                 role: "user" as const,
                 content: {
-                  type: "text" as const,
-                  text: content,
+                  type: "resource" as const,
+                  resource: {
+                    uri: `skill://${skillName}`,
+                    mimeType: "text/markdown",
+                    text: content,
+                  },
                   annotations: {
                     audience: ["assistant" as const],
                     priority: 1.0,
@@ -159,7 +168,7 @@ export function registerSkillPrompts(
                 role: "user" as const,
                 content: {
                   type: "text" as const,
-                  text: `Failed to load skill "${name}": ${message}`,
+                  text: `Failed to load skill "${skillName}": ${message}`,
                 },
               },
             ],
@@ -212,7 +221,7 @@ export function refreshPrompts(
         description: skill.description,
       });
     } else {
-      // Register new skill prompt
+      // Register new skill prompt with embedded resource
       const skillPath = skill.path;
       const skillName = name;
       const prompt = server.registerPrompt(
@@ -229,8 +238,12 @@ export function refreshPrompts(
                 {
                   role: "user" as const,
                   content: {
-                    type: "text" as const,
-                    text: content,
+                    type: "resource" as const,
+                    resource: {
+                      uri: `skill://${skillName}`,
+                      mimeType: "text/markdown",
+                      text: content,
+                    },
                     annotations: {
                       audience: ["assistant" as const],
                       priority: 1.0,
