@@ -120,6 +120,22 @@ This server exposes skills via **tools**, **resources**, and **prompts**:
 
 Most users will rely on tools for automatic skill activation. Prompts provide user-initiated loading with auto-completion. Resources provide an alternative for manual control.
 
+## Progressive Disclosure Design
+
+This server follows the [Agent Skills](https://agentskills.io) progressive disclosure pattern:
+
+1. **SKILL.md is the entry point** - When a skill is loaded (via tool, prompt, or resource), only the SKILL.md content is returned initially
+2. **SKILL.md documents available resources** - Skill authors are responsible for referencing additional files in their SKILL.md (e.g., "Copy the template from `templates/server.ts`")
+3. **Agent fetches resources on demand** - When the agent sees a file reference in SKILL.md, it uses `skill-resource` to fetch that specific file
+
+This design keeps initial context small while giving skill authors full control over how resources are presented. The server doesn't automatically list all files because:
+
+- **Skill authors know best** - They decide which files are relevant and when to use them
+- **Context efficiency** - Loading everything upfront wastes tokens on files the agent may not need
+- **Natural flow** - SKILL.md guides the agent through the skill's resources in a logical order
+
+**For skill authors:** Make sure your SKILL.md clearly documents any additional resources the agent should use. Reference files by their relative path (e.g., `snippets/tool.ts`, `references/api.md`) so the agent knows what to fetch with `skill-resource`.
+
 ## Tools
 
 ### `skill`
