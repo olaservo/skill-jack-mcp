@@ -94,6 +94,10 @@ export function registerSkillPrompts(
               content: {
                 type: "text",
                 text: content,
+                annotations: {
+                  audience: ["assistant"],
+                  priority: 1.0,
+                },
               },
             },
           ],
@@ -139,6 +143,10 @@ export function registerSkillPrompts(
                 content: {
                   type: "text" as const,
                   text: content,
+                  annotations: {
+                    audience: ["assistant" as const],
+                    priority: 1.0,
+                  },
                 },
               },
             ],
@@ -223,6 +231,10 @@ export function refreshPrompts(
                   content: {
                     type: "text" as const,
                     text: content,
+                    annotations: {
+                      audience: ["assistant" as const],
+                      priority: 1.0,
+                    },
                   },
                 },
               ],
