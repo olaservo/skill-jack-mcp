@@ -330,12 +330,16 @@ npm run build
 npm run inspector -- /path/to/skills
 ```
 
-### Automated Evals
+### Automated Evals (Development Only)
 
-The `evals/` directory contains an evaluation framework for testing skill activation across different delivery modes.
+The `evals/` directory contains an evaluation framework for testing skill activation across different delivery modes. Evals are only available when developing from source (not included in the npm package).
 
 ```bash
-# Install dependencies (includes claude-agent-sdk for evals)
+# Clone the repo first
+git clone https://github.com/olaservo/skilljack-mcp.git
+cd skilljack-mcp
+
+# Install dev dependencies (includes claude-agent-sdk for evals)
 npm install
 
 # Build and run evals
