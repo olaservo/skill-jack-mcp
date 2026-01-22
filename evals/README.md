@@ -141,7 +141,15 @@ evals/
 
 **Context duplication in mcp+native mode**: When both MCP and native skills are enabled, the same skill appears twice (via MCP tool description AND `.claude/skills/` files). This may cause context bloat and could affect which mechanism the agent chooses.
 
-**Activation differences by mode**: Initial testing shows native mode may activate skills more readily than MCP mode for the same prompts. This could be due to system prompt differences or how skills are presented to the agent.
+**Activation differences by mode**: Initial testing showed native mode activated skills more readily than MCP mode for the same prompts. Investigation revealed this is due to the native Skill tool description containing explicit activation triggers:
+
+> "When a skill is relevant, you must invoke this tool IMMEDIATELY as your first action"
+> "NEVER just announce or mention a skill in your text response without actually calling this tool"
+> "This is a BLOCKING REQUIREMENT"
+
+Source: [Unofficial Claude Code system prompts](https://github.com/Piebald-AI/claude-code-system-prompts/blob/main/system-prompts/tool-description-skill.md)
+
+**Solution**: Adding similar language to the MCP skill tool description brings activation behavior in line with native mode. The skilljack MCP server now includes these activation triggers in its tool description.
 - Logs and results are gitignored but preserved locally for analysis
 - Custom system prompts can be added per-task via `systemPrompt` field in task config
 - Session IDs include mode prefix for easy comparison (e.g., `mcp-greeting-*` vs `native-greeting-*` vs `cli-native-greeting-*`)
