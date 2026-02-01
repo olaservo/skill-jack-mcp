@@ -17,7 +17,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import chokidar from "chokidar";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { discoverSkills, createSkillMap } from "./skill-discovery.js";
+import { discoverSkills, createSkillMap, applyInvocationOverrides } from "./skill-discovery.js";
 import { registerSkillTool, getToolDescription, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import { registerSkillPrompts, refreshPrompts, PromptRegistry } from "./skill-prompts.js";
@@ -27,8 +27,9 @@ import {
   refreshSubscriptions,
   SubscriptionManager,
 } from "./subscriptions.js";
-import { getActiveDirectories } from "./skill-config.js";
+import { getActiveDirectories, getSkillInvocationOverrides } from "./skill-config.js";
 import { registerSkillConfigTool } from "./skill-config-tool.js";
+import { registerSkillDisplayTool } from "./skill-display-tool.js";
 
 /**
  * Subdirectories to check for skills within the configured directory.
@@ -119,8 +120,12 @@ function refreshSkills(
   console.error("Refreshing skills...");
 
   // Re-discover all skills
-  const skills = discoverSkillsFromDirs(skillsDirs);
+  let skills = discoverSkillsFromDirs(skillsDirs);
   const oldCount = skillState.skillMap.size;
+
+  // Apply invocation overrides from config
+  const overrides = getSkillInvocationOverrides();
+  skills = applyInvocationOverrides(skills, overrides);
 
   // Update shared state
   skillState.skillMap = createSkillMap(skills);
@@ -273,7 +278,12 @@ async function main() {
   }
 
   // Discover skills at startup
-  const skills = discoverSkillsFromDirs(currentSkillsDirs);
+  let skills = discoverSkillsFromDirs(currentSkillsDirs);
+
+  // Apply invocation overrides from config
+  const overrides = getSkillInvocationOverrides();
+  skills = applyInvocationOverrides(skills, overrides);
+
   skillState.skillMap = createSkillMap(skills);
   console.error(`Discovered ${skills.length} skill(s)`);
 
@@ -306,6 +316,14 @@ async function main() {
     // Reload directories from config and refresh skills
     currentSkillsDirs = getActiveDirectories();
     console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
+    refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+  });
+
+  // Register skill-display tool for UI-based invocation settings
+  registerSkillDisplayTool(server, skillState, () => {
+    // Callback when invocation settings change via UI
+    // Refresh skills to apply new overrides
+    console.error("Invocation settings changed via UI. Refreshing skills...");
     refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
   });
 

@@ -12,10 +12,19 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 /**
+ * Invocation settings that can be overridden per skill.
+ */
+export interface SkillInvocationOverrides {
+  assistant?: boolean; // Override disableModelInvocation (true = model can invoke)
+  user?: boolean; // Override userInvocable (true = appears in prompts menu)
+}
+
+/**
  * Configuration file schema.
  */
 export interface SkillConfig {
   skillDirectories: string[];
+  skillInvocationOverrides?: Record<string, SkillInvocationOverrides>;
 }
 
 /**
@@ -83,26 +92,40 @@ export function loadConfigFile(): SkillConfig {
   const configPath = getConfigPath();
 
   if (!fs.existsSync(configPath)) {
-    return { skillDirectories: [] };
+    return { skillDirectories: [], skillInvocationOverrides: {} };
   }
 
   try {
     const content = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(content);
 
-    // Validate and normalize
-    if (!parsed.skillDirectories || !Array.isArray(parsed.skillDirectories)) {
-      return { skillDirectories: [] };
+    // Validate and normalize directories
+    const skillDirectories = Array.isArray(parsed.skillDirectories)
+      ? parsed.skillDirectories
+          .filter((p: unknown) => typeof p === "string")
+          .map((p: string) => path.resolve(p))
+      : [];
+
+    // Validate and normalize invocation overrides
+    const skillInvocationOverrides: Record<string, SkillInvocationOverrides> = {};
+    if (parsed.skillInvocationOverrides && typeof parsed.skillInvocationOverrides === "object") {
+      for (const [name, override] of Object.entries(parsed.skillInvocationOverrides)) {
+        if (typeof override === "object" && override !== null) {
+          const validOverride: SkillInvocationOverrides = {};
+          const o = override as Record<string, unknown>;
+          if (typeof o.assistant === "boolean") validOverride.assistant = o.assistant;
+          if (typeof o.user === "boolean") validOverride.user = o.user;
+          if (Object.keys(validOverride).length > 0) {
+            skillInvocationOverrides[name] = validOverride;
+          }
+        }
+      }
     }
 
-    return {
-      skillDirectories: parsed.skillDirectories
-        .filter((p: unknown) => typeof p === "string")
-        .map((p: string) => path.resolve(p)),
-    };
+    return { skillDirectories, skillInvocationOverrides };
   } catch (error) {
     console.error(`Warning: Failed to parse config file: ${error}`);
-    return { skillDirectories: [] };
+    return { skillDirectories: [], skillInvocationOverrides: {} };
   }
 }
 
@@ -312,4 +335,61 @@ export function removeDirectoryFromConfig(directory: string): void {
 export function getActiveDirectories(): string[] {
   const state = getConfigState();
   return state.directories.map((d) => d.path);
+}
+
+/**
+ * Get all skill invocation overrides from the config file.
+ */
+export function getSkillInvocationOverrides(): Record<string, SkillInvocationOverrides> {
+  const config = loadConfigFile();
+  return config.skillInvocationOverrides || {};
+}
+
+/**
+ * Set an invocation override for a skill.
+ * @param skillName - The name of the skill
+ * @param setting - Which setting to override ("assistant" or "user")
+ * @param value - The new value for the setting
+ */
+export function setSkillInvocationOverride(
+  skillName: string,
+  setting: "assistant" | "user",
+  value: boolean
+): void {
+  const config = loadConfigFile();
+  if (!config.skillInvocationOverrides) {
+    config.skillInvocationOverrides = {};
+  }
+  if (!config.skillInvocationOverrides[skillName]) {
+    config.skillInvocationOverrides[skillName] = {};
+  }
+  config.skillInvocationOverrides[skillName][setting] = value;
+  saveConfigFile(config);
+}
+
+/**
+ * Clear an invocation override for a skill (revert to frontmatter default).
+ * @param skillName - The name of the skill
+ * @param setting - Which setting to clear (omit to clear both)
+ */
+export function clearSkillInvocationOverride(
+  skillName: string,
+  setting?: "assistant" | "user"
+): void {
+  const config = loadConfigFile();
+  if (!config.skillInvocationOverrides || !config.skillInvocationOverrides[skillName]) {
+    return; // Nothing to clear
+  }
+
+  if (setting) {
+    delete config.skillInvocationOverrides[skillName][setting];
+    // Clean up empty override objects
+    if (Object.keys(config.skillInvocationOverrides[skillName]).length === 0) {
+      delete config.skillInvocationOverrides[skillName];
+    }
+  } else {
+    delete config.skillInvocationOverrides[skillName];
+  }
+
+  saveConfigFile(config);
 }
