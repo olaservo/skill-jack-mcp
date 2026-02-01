@@ -18,7 +18,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import chokidar from "chokidar";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { discoverSkills, createSkillMap, applyInvocationOverrides } from "./skill-discovery.js";
+import { discoverSkills, createSkillMap, applyInvocationOverrides, SkillSource, DEFAULT_SKILL_SOURCE } from "./skill-discovery.js";
 import { registerSkillTool, getToolDescription, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import { registerSkillPrompts, refreshPrompts, PromptRegistry } from "./skill-prompts.js";
@@ -37,6 +37,7 @@ import {
   isRepoAllowed,
   getGitHubConfig,
   GitHubRepoSpec,
+  getRepoCachePath,
 } from "./github-config.js";
 import { syncAllRepos, SyncOptions } from "./github-sync.js";
 import { createPollingManager, PollingManager } from "./github-polling.js";
@@ -45,6 +46,61 @@ import { createPollingManager, PollingManager } from "./github-polling.js";
  * Subdirectories to check for skills within the configured directory.
  */
 const SKILL_SUBDIRS = [".claude/skills", "skills"];
+
+/**
+ * Map from directory path to its source information.
+ * Used to tag discovered skills with their origin.
+ */
+interface DirectorySourceMap {
+  [dirPath: string]: SkillSource;
+}
+
+/**
+ * Build a directory-to-source map from current configuration.
+ * Maps both main directories and their standard subdirectories.
+ *
+ * @param localDirs - Local skill directories
+ * @param githubSpecs - GitHub repository specifications
+ * @param cacheDir - GitHub cache directory path
+ */
+function buildDirectorySourceMap(
+  localDirs: string[],
+  githubSpecs: GitHubRepoSpec[],
+  cacheDir: string
+): DirectorySourceMap {
+  const map: DirectorySourceMap = {};
+
+  // Map local directories
+  for (const dir of localDirs) {
+    const source: SkillSource = {
+      type: "local",
+      displayName: "Local",
+    };
+    map[dir] = source;
+    // Also map standard subdirectories
+    for (const subdir of SKILL_SUBDIRS) {
+      map[path.join(dir, subdir)] = source;
+    }
+  }
+
+  // Map GitHub cache directories
+  for (const spec of githubSpecs) {
+    const cachePath = getRepoCachePath(spec, cacheDir);
+    const source: SkillSource = {
+      type: "github",
+      displayName: `${spec.owner}/${spec.repo}`,
+      owner: spec.owner,
+      repo: spec.repo,
+    };
+    map[cachePath] = source;
+    // Also map standard subdirectories
+    for (const subdir of SKILL_SUBDIRS) {
+      map[path.join(cachePath, subdir)] = source;
+    }
+  }
+
+  return map;
+}
 
 /**
  * Current skill directories (mutable to support UI-driven changes).
@@ -56,6 +112,12 @@ let currentSkillsDirs: string[] = [];
  * GitHub specs that are currently being polled.
  */
 let currentGithubSpecs: GitHubRepoSpec[] = [];
+
+/**
+ * Current directory-to-source map for skill discovery.
+ * Maps directory paths to their source info (local or GitHub).
+ */
+let currentSourceMap: DirectorySourceMap = {};
 
 /**
  * Classify paths as local directories or GitHub repositories.
@@ -111,8 +173,14 @@ const skillState: SkillState = {
  * Discover skills from multiple configured directories.
  * Each directory is checked along with its standard subdirectories.
  * Handles duplicate skill names by keeping first occurrence.
+ *
+ * @param skillsDirs - The skill directories to scan
+ * @param sourceMap - Map from directory paths to source info
  */
-function discoverSkillsFromDirs(skillsDirs: string[]): ReturnType<typeof discoverSkills> {
+function discoverSkillsFromDirs(
+  skillsDirs: string[],
+  sourceMap: DirectorySourceMap
+): ReturnType<typeof discoverSkills> {
   const allSkills: ReturnType<typeof discoverSkills> = [];
   const seenNames = new Map<string, string>(); // name -> source directory
 
@@ -124,14 +192,19 @@ function discoverSkillsFromDirs(skillsDirs: string[]): ReturnType<typeof discove
 
     console.error(`Scanning skills directory: ${skillsDir}`);
 
+    // Get source info for this directory (default to local if not in map)
+    const dirSource = sourceMap[skillsDir] || DEFAULT_SKILL_SOURCE;
+
     // Check if the directory itself contains skills
-    const dirSkills = discoverSkills(skillsDir);
+    const dirSkills = discoverSkills(skillsDir, dirSource);
 
     // Also check standard subdirectories
     for (const subdir of SKILL_SUBDIRS) {
       const subPath = path.join(skillsDir, subdir);
       if (fs.existsSync(subPath)) {
-        dirSkills.push(...discoverSkills(subPath));
+        // Use subpath source if available, otherwise inherit from parent
+        const subSource = sourceMap[subPath] || dirSource;
+        dirSkills.push(...discoverSkills(subPath, subSource));
       }
     }
 
@@ -177,8 +250,8 @@ function refreshSkills(
 ): void {
   console.error("Refreshing skills...");
 
-  // Re-discover all skills
-  let skills = discoverSkillsFromDirs(skillsDirs);
+  // Re-discover all skills using current source map
+  let skills = discoverSkillsFromDirs(skillsDirs, currentSourceMap);
   const oldCount = skillState.skillMap.size;
 
   // Apply invocation overrides from config
@@ -375,6 +448,9 @@ async function main() {
   // Combine all skill directories
   currentSkillsDirs = [...localDirs, ...githubDirs];
 
+  // Build source map for skill discovery
+  currentSourceMap = buildDirectorySourceMap(localDirs, currentGithubSpecs, githubConfig.cacheDir);
+
   // Allow starting with no directories - user can configure via UI
   if (currentSkillsDirs.length === 0) {
     console.error("No skills directories configured.");
@@ -392,7 +468,7 @@ async function main() {
   }
 
   // Discover skills at startup
-  let skills = discoverSkillsFromDirs(currentSkillsDirs);
+  let skills = discoverSkillsFromDirs(currentSkillsDirs, currentSourceMap);
 
   // Apply invocation overrides from config
   const overrides = getSkillInvocationOverrides();
@@ -432,6 +508,8 @@ async function main() {
     const newPaths = getActiveDirectories();
     const { localDirs: newLocalDirs } = classifyPaths(newPaths);
     currentSkillsDirs = [...newLocalDirs, ...githubDirs];
+    // Rebuild source map with updated local directories
+    currentSourceMap = buildDirectorySourceMap(newLocalDirs, currentGithubSpecs, githubConfig.cacheDir);
     console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
     refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
   });
