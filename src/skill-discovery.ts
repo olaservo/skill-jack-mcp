@@ -16,6 +16,8 @@ export interface SkillMetadata {
   name: string;
   description: string;
   path: string; // Full path to SKILL.md
+  disableModelInvocation?: boolean; // When true, exclude from tool description
+  userInvocable?: boolean; // When false, exclude from prompts (default: true)
 }
 
 /**
@@ -85,6 +87,8 @@ export function discoverSkills(skillsDir: string): SkillMetadata[] {
 
       const name = metadata.name;
       const description = metadata.description;
+      const disableModelInvocation = metadata["disable-model-invocation"];
+      const userInvocable = metadata["user-invocable"];
 
       if (typeof name !== "string" || !name.trim()) {
         console.error(`Skill at ${skillDir}: missing or invalid 'name' field`);
@@ -99,6 +103,8 @@ export function discoverSkills(skillsDir: string): SkillMetadata[] {
         name: name.trim(),
         description: description.trim(),
         path: skillMdPath,
+        disableModelInvocation: disableModelInvocation === true,
+        userInvocable: userInvocable !== false, // Default to true
       });
     } catch (error) {
       console.error(`Failed to parse skill at ${skillDir}:`, error);
@@ -175,4 +181,20 @@ export function createSkillMap(skills: SkillMetadata[]): Map<string, SkillMetada
     }
   }
   return map;
+}
+
+/**
+ * Filter skills that can be invoked by the model (appear in tool description).
+ * Excludes skills with disable-model-invocation: true in frontmatter.
+ */
+export function getModelInvocableSkills(skills: SkillMetadata[]): SkillMetadata[] {
+  return skills.filter((skill) => !skill.disableModelInvocation);
+}
+
+/**
+ * Filter skills that can be invoked by the user (appear in prompts menu).
+ * Excludes skills with user-invocable: false in frontmatter.
+ */
+export function getUserInvocableSkills(skills: SkillMetadata[]): SkillMetadata[] {
+  return skills.filter((skill) => skill.userInvocable !== false);
 }
