@@ -36,8 +36,9 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "npm run build:ui && tsc",
+    "build": "npm run build:ui && npm run build:ui:display && tsc",
     "build:ui": "vite build",
+    "build:ui:display": "cross-env INPUT=skill-display.html vite build --emptyOutDir false",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "inspector": "npx @modelcontextprotocol/inspector@latest node dist/index.js",
@@ -61,6 +62,7 @@
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.42",
     "@types/node": "^22.10.0",
+    "cross-env": "^7.0.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
