@@ -12,6 +12,7 @@ An MCP server that jacks [Agent Skills](https://agentskills.io) directly into yo
 - **MCP Prompts** - Load skills via `/skill` prompt with auto-completion or per-skill prompts
 - **MCP Resources** - Access skills via `skill://` URIs with batch collection support
 - **Resource Subscriptions** - Real-time file watching with `notifications/resources/updated`
+- **Configuration UI** - Manage skill directories through an [interactive UI](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/) in supported clients
 
 ## Motivation
 
@@ -69,6 +70,23 @@ Each directory is scanned along with its `.claude/skills/` and `skills/` subdire
 ```bash
 skilljack-mcp "C:/Users/you/skills"
 ```
+
+## Configuration UI
+
+In MCP clients that support [MCP Apps](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/) (like Claude Desktop), you can manage skill directories through an interactive UI.
+
+**To open the configuration UI**, ask your assistant to show the skilljack config:
+
+> "show me the skilljack config"
+
+The UI displays:
+- Current skill directories with skill counts
+- Status indicators showing which directories are from config vs command-line
+- Options to add new directories or remove existing ones
+
+![Skills Configuration UI](docs/images/skills-config-ui.png)
+
+Changes made through the UI are persisted to the server's configuration. Clients that support `tools/listChanged` notifications will see updates immediately; others may require reconnection.
 
 ## How It Works
 
