@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Skills Configuration</title>
+  <link rel="stylesheet" href="./mcp-app.css">
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Skills Directories</h1>
+      <div class="stats" id="stats">Loading...</div>
+    </div>
+    <button class="add-btn" id="add-btn">
+      <span>+</span> Add Directory
+    </button>
+  </div>
+
+  <div class="override-banner" id="override-banner">
+    <strong>Note:</strong> Directories are being set by <span id="override-source">CLI args</span>.
+    Changes to the config file won't take effect while this override is active.
+  </div>
+
+  <div id="directory-list" class="directory-list">
+    <div class="loading">Loading directories...</div>
+  </div>
+
+  <!-- Add Directory Modal -->
+  <div class="modal-overlay" id="add-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Skills Directory</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="directory-path">Directory Path</label>
+          <input
+            type="text"
+            id="directory-path"
+            placeholder="/path/to/skills"
+          >
+          <div class="form-hint">
+            Absolute path to a directory containing skill folders (each with a SKILL.md file)
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary">Cancel</button>
+        <button class="btn btn-primary" id="add-submit-btn">Add Directory</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="./mcp-app.ts"></script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+/**
+ * Skills Configuration MCP App - Vanilla JS implementation
+ */
+import {
+  App,
+  applyDocumentTheme,
+  applyHostStyleVariables,
+  applyHostFonts,
+} from "@modelcontextprotocol/ext-apps";
+
+// Types
+interface DirectoryInfo {
+  path: string;
+  source: "cli" | "env" | "config";
+  valid: boolean;
+  skillCount?: number;
+}
+
+interface ConfigState {
+  directories: DirectoryInfo[];
+  activeSource: string;
+  isOverridden: boolean;
+  success?: boolean;
+  error?: string;
+}
+
+// State
+let directories: DirectoryInfo[] = [];
+let activeSource = "config";
+let isOverridden = false;
+let app: App | null = null;
+
+// DOM Elements
+const directoryList = document.getElementById("directory-list")!;
+const stats = document.getElementById("stats")!;
+const addBtn = document.getElementById("add-btn") as HTMLButtonElement;
+const addModal = document.getElementById("add-modal")!;
+const overrideBanner = document.getElementById("override-banner")!;
+const overrideSource = document.getElementById("override-source")!;
+const toast = document.getElementById("toast")!;
+const directoryInput = document.getElementById("directory-path") as HTMLInputElement;
+const addSubmitBtn = document.getElementById("add-submit-btn") as HTMLButtonElement;
+
+// Handle host context changes
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleHostContextChanged(ctx: any) {
+  if (ctx.theme) {
+    applyDocumentTheme(ctx.theme);
+  }
+  if (ctx.styles?.variables) {
+    applyHostStyleVariables(ctx.styles.variables);
+  }
+  if (ctx.styles?.css?.fonts) {
+    applyHostFonts(ctx.styles.css.fonts);
+  }
+  // Handle safe area insets for mobile/notched devices
+  if (ctx.safeAreaInsets) {
+    const { top, right, bottom, left } = ctx.safeAreaInsets;
+    document.body.style.paddingTop = `${top + 16}px`;
+    document.body.style.paddingRight = `${right + 16}px`;
+    document.body.style.paddingBottom = `${bottom + 16}px`;
+    document.body.style.paddingLeft = `${left + 16}px`;
+  }
+}
+
+// Update state from tool result
+function updateState(data: ConfigState) {
+  if (data.directories) {
+    directories = data.directories;
+  }
+  if (data.activeSource) {
+    activeSource = data.activeSource;
+  }
+  if (data.isOverridden !== undefined) {
+    isOverridden = data.isOverridden;
+  }
+
+  render();
+}
+
+// Render the UI
+function render() {
+  renderStats();
+  renderOverrideBanner();
+  renderDirectories();
+  updateAddButton();
+}
+
+function renderStats() {
+  const totalSkills = directories.reduce((sum, d) => sum + (d.skillCount || 0), 0);
+  const validCount = directories.filter((d) => d.valid).length;
+  stats.textContent = `${directories.length} directories, ${totalSkills} skills total`;
+  if (validCount < directories.length) {
+    stats.textContent += ` (${directories.length - validCount} missing)`;
+  }
+}
+
+function renderOverrideBanner() {
+  if (isOverridden) {
+    overrideBanner.classList.add("visible");
+    overrideSource.textContent =
+      activeSource === "cli" ? "CLI arguments" : "SKILLS_DIR environment variable";
+  } else {
+    overrideBanner.classList.remove("visible");
+  }
+}
+
+function renderDirectories() {
+  if (directories.length === 0) {
+    directoryList.innerHTML = `
+      <div class="empty-state">
+        <p>No skills directories configured.</p>
+        <p>Click "Add Directory" to get started.</p>
+      </div>
+    `;
+    return;
+  }
+
+  directoryList.innerHTML = directories
+    .map((dir) => {
+      const isReadOnly = dir.source !== "config";
+      return `
+      <div class="directory-card ${isReadOnly ? "readonly" : ""}">
+        ${isReadOnly ? `<span class="lock-icon" title="Read-only: configured via ${dir.source.toUpperCase()}">&#128274;</span>` : ""}
+        <div class="directory-info">
+          <div class="directory-path">${escapeHtml(dir.path)}</div>
+          <div class="directory-meta">
+            <span class="source-badge ${dir.source}">${dir.source.toUpperCase()}</span>
+            <span class="skill-count">${dir.skillCount} skill${dir.skillCount !== 1 ? "s" : ""}</span>
+            <span class="validity-icon ${dir.valid ? "valid" : "invalid"}" title="${dir.valid ? "Directory exists" : "Directory not found"}">
+              ${dir.valid ? "&#10003;" : "&#10007;"}
+            </span>
+          </div>
+        </div>
+        ${!isReadOnly ? `<button class="remove-btn" data-path="${escapeHtml(dir.path)}">Remove</button>` : ""}
+      </div>
+    `;
+    })
+    .join("");
+
+  // Add click handlers for remove buttons
+  directoryList.querySelectorAll(".remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const path = (btn as HTMLButtonElement).dataset.path;
+      if (path) {
+        removeDirectory(path);
+      }
+    });
+  });
+}
+
+function updateAddButton() {
+  // Disable add button if directories are overridden
+  addBtn.disabled = isOverridden;
+  if (isOverridden) {
+    addBtn.title =
+      "Cannot add directories while " +
+      (activeSource === "cli" ? "CLI args" : "env var") +
+      " override is active";
+  } else {
+    addBtn.title = "";
+  }
+}
+
+// Add directory
+async function addDirectory() {
+  const path = directoryInput.value.trim();
+  if (!path) {
+    showToast("Please enter a directory path", "error");
+    return;
+  }
+
+  addSubmitBtn.disabled = true;
+  addSubmitBtn.textContent = "Adding...";
+
+  try {
+    const result = await app!.callServerTool({
+      name: "skill-config-add-directory",
+      arguments: { directory: path },
+    });
+
+    console.log("Add result:", result);
+
+    const structured = result.structuredContent as unknown as ConfigState;
+    if (structured?.success) {
+      updateState(structured);
+      closeAddModal();
+      showToast("Directory added successfully", "success");
+    } else {
+      showToast(structured?.error || "Failed to add directory", "error");
+    }
+  } catch (error) {
+    console.error("Add directory error:", error);
+    showToast((error as Error).message || "Failed to add directory", "error");
+  } finally {
+    addSubmitBtn.disabled = false;
+    addSubmitBtn.textContent = "Add Directory";
+  }
+}
+
+// Remove directory
+async function removeDirectory(path: string) {
+  if (!confirm(`Remove "${path}" from configuration?`)) {
+    return;
+  }
+
+  try {
+    const result = await app!.callServerTool({
+      name: "skill-config-remove-directory",
+      arguments: { directory: path },
+    });
+
+    console.log("Remove result:", result);
+
+    const structured = result.structuredContent as unknown as ConfigState;
+    if (structured?.success) {
+      updateState(structured);
+      showToast("Directory removed", "success");
+    } else {
+      showToast(structured?.error || "Failed to remove directory", "error");
+    }
+  } catch (error) {
+    console.error("Remove directory error:", error);
+    showToast((error as Error).message || "Failed to remove directory", "error");
+  }
+}
+
+// Modal functions
+function showAddModal() {
+  if (isOverridden) {
+    showToast("Cannot add directories while override is active", "error");
+    return;
+  }
+  directoryInput.value = "";
+  addModal.classList.add("active");
+  directoryInput.focus();
+}
+
+function closeAddModal() {
+  addModal.classList.remove("active");
+}
+
+// Toast
+function showToast(message: string, type: "success" | "error" = "success") {
+  toast.textContent = message;
+  toast.className = `toast ${type} visible`;
+  setTimeout(() => {
+    toast.classList.remove("visible");
+  }, 3000);
+}
+
+// Utilities
+function escapeHtml(str: string): string {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] || c
+  );
+}
+
+// Set up event listeners
+addBtn.addEventListener("click", showAddModal);
+document.querySelector(".modal-close")?.addEventListener("click", closeAddModal);
+document.querySelector(".btn-secondary")?.addEventListener("click", closeAddModal);
+addSubmitBtn.addEventListener("click", addDirectory);
+directoryInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    addDirectory();
+  }
+});
+
+// 1. Create app instance
+app = new App({ name: "Skills Config", version: "1.0.0" });
+
+// 2. Register handlers BEFORE connecting
+app.onteardown = async () => {
+  console.info("App is being torn down");
+  return {};
+};
+
+app.ontoolinput = (params) => {
+  console.info("Received tool input:", params);
+};
+
+app.ontoolresult = (result) => {
+  console.info("Received tool result:", result);
+  if (result.structuredContent) {
+    updateState(result.structuredContent as ConfigState);
+  }
+};
+
+app.ontoolcancelled = (params) => {
+  console.info("Tool call cancelled:", params.reason);
+};
+
+app.onerror = console.error;
+
+app.onhostcontextchanged = handleHostContextChanged;
+
+// 3. Connect to host
+app.connect().then(() => {
+  console.info("Connected to host");
+
+  // Apply initial host context
+  const ctx = app!.getHostContext();
+  if (ctx) {
+    handleHostContextChanged(ctx);
+  }
+});

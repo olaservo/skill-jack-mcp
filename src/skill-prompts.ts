@@ -9,7 +9,7 @@
 import { McpServer, RegisteredPrompt } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { completable } from "@modelcontextprotocol/sdk/server/completable.js";
 import { z } from "zod";
-import { loadSkillContent, generateInstructions } from "./skill-discovery.js";
+import { loadSkillContent, generateInstructions, getUserInvocableSkills } from "./skill-discovery.js";
 import { SkillState } from "./skill-tool.js";
 
 /**
@@ -32,11 +32,13 @@ function getSkillNameCompletions(value: string, skillState: SkillState): string[
 /**
  * Generate the description for the /skill prompt.
  * Includes available skills list for discoverability.
+ * Only includes user-invocable skills (excludes user-invocable: false).
  */
 export function getPromptDescription(skillState: SkillState): string {
-  const skills = Array.from(skillState.skillMap.values());
+  const allSkills = Array.from(skillState.skillMap.values());
+  const userInvocableSkills = getUserInvocableSkills(allSkills);
   const usage = "Load a skill by name with auto-completion.\n\n";
-  return usage + generateInstructions(skills);
+  return usage + generateInstructions(userInvocableSkills);
 }
 
 /**
@@ -125,9 +127,12 @@ export function registerSkillPrompts(
 
   // 2. Register per-skill prompts (no arguments needed)
   // Returns embedded resource with skill:// URI (MCP-idiomatic)
+  // Only register prompts for user-invocable skills (excludes user-invocable: false)
   const perSkillPrompts = new Map<string, RegisteredPrompt>();
+  const userInvocableSkills = getUserInvocableSkills(Array.from(skillState.skillMap.values()));
 
-  for (const [name, skill] of skillState.skillMap) {
+  for (const skill of userInvocableSkills) {
+    const name = skill.name;
     // Capture skill info in closure for this specific prompt
     const skillPath = skill.path;
     const skillName = name;
@@ -205,16 +210,21 @@ export function refreshPrompts(
     description: getPromptDescription(skillState),
   });
 
-  // Disable removed skill prompts
+  // Get current user-invocable skills
+  const userInvocableSkills = getUserInvocableSkills(Array.from(skillState.skillMap.values()));
+  const userInvocableNames = new Set(userInvocableSkills.map((s) => s.name));
+
+  // Disable prompts for removed skills or skills no longer user-invocable
   for (const [name, prompt] of registry.perSkillPrompts) {
-    if (!skillState.skillMap.has(name)) {
+    if (!userInvocableNames.has(name)) {
       prompt.update({ enabled: false });
       registry.perSkillPrompts.delete(name);
     }
   }
 
-  // Add/update per-skill prompts
-  for (const [name, skill] of skillState.skillMap) {
+  // Add/update per-skill prompts for user-invocable skills only
+  for (const skill of userInvocableSkills) {
+    const name = skill.name;
     if (registry.perSkillPrompts.has(name)) {
       // Update existing prompt description
       registry.perSkillPrompts.get(name)!.update({
