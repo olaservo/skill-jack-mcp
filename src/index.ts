@@ -7,8 +7,15 @@
  *
  * Usage:
  *   skilljack-mcp /path/to/skills [/path2 ...]   # One or more directories
+ *   skilljack-mcp --static /path/to/skills       # Static mode (no file watching)
  *   SKILLS_DIR=/path/to/skills skilljack-mcp    # Single directory via env
  *   SKILLS_DIR=/path1,/path2 skilljack-mcp      # Multiple (comma-separated)
+ *   SKILLJACK_STATIC=true skilljack-mcp         # Static mode via env
+ *
+ * Options:
+ *   --static  Freeze skills list at startup. Disables file watching and
+ *             tools/prompts listChanged notifications. Resource subscriptions
+ *             remain fully dynamic.
  */
 
 import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -71,6 +78,23 @@ function getSkillsDirs(): string[] {
 
   // Deduplicate by resolved path
   return [...new Set(dirs)];
+}
+
+/**
+ * Check if static mode is enabled.
+ * Static mode freezes the skills list at startup - no file watching,
+ * no listChanged notifications for tools/prompts.
+ */
+function getStaticMode(): boolean {
+  // Check CLI flag
+  const args = process.argv.slice(2);
+  if (args.includes("--static")) {
+    return true;
+  }
+
+  // Check environment variable
+  const envValue = process.env.SKILLJACK_STATIC?.toLowerCase();
+  return envValue === "true" || envValue === "1" || envValue === "yes";
 }
 
 /**
@@ -293,6 +317,7 @@ const subscriptionManager = createSubscriptionManager();
 
 async function main() {
   const skillsDirs = getSkillsDirs();
+  const isStatic = getStaticMode();
 
   if (skillsDirs.length === 0) {
     console.error("No skills directory configured.");
@@ -303,6 +328,9 @@ async function main() {
   }
 
   console.error(`Skills directories: ${skillsDirs.join(", ")}`);
+  if (isStatic) {
+    console.error("Static mode enabled - skills list frozen at startup");
+  }
 
   // Discover skills at startup
   const skills = discoverSkillsFromDirs(skillsDirs);
@@ -310,6 +338,8 @@ async function main() {
   console.error(`Discovered ${skills.length} skill(s)`);
 
   // Create the MCP server
+  // In static mode, disable listChanged for tools/prompts (skills list is frozen)
+  // Resource subscriptions remain dynamic for individual skill file watching
   const server = new McpServer(
     {
       name: "skilljack-mcp",
@@ -317,9 +347,9 @@ async function main() {
     },
     {
       capabilities: {
-        tools: { listChanged: true },
+        tools: { listChanged: !isStatic },
         resources: { subscribe: true, listChanged: true },
-        prompts: { listChanged: true },
+        prompts: { listChanged: !isStatic },
       },
     }
   );
@@ -332,8 +362,10 @@ async function main() {
   // Register subscription handlers for resource file watching
   registerSubscriptionHandlers(server, skillState, subscriptionManager);
 
-  // Set up file watchers for skill directory changes
-  watchSkillDirectories(skillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+  // Set up file watchers for skill directory changes (skip in static mode)
+  if (!isStatic) {
+    watchSkillDirectories(skillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+  }
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();

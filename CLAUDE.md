@@ -6,6 +6,17 @@
 - `npm run dev` - Watch mode (tsx)
 - `npm run inspector` - Test with MCP Inspector
 
+## Configuration
+
+**Environment Variables:**
+- `SKILLS_DIR` - Comma-separated list of skill directories
+- `SKILLJACK_STATIC` - Set to `true`, `1`, or `yes` to enable static mode
+- `MAX_FILE_SIZE_MB` - Maximum file size for skill resources (default: 1MB)
+
+**CLI Options:**
+- Positional args: Skill directories
+- `--static`: Enable static mode (freeze skills at startup, no file watching)
+
 ## Project Structure
 
 ```
@@ -48,9 +59,10 @@ src/
 
 | Function | File | Purpose |
 |----------|------|---------|
+| `getStaticMode()` | index.ts | Check if static mode is enabled (CLI/env) |
 | `discoverSkillsFromDirs()` | index.ts | Scan directories for skills |
 | `refreshSkills()` | index.ts | Re-discover + update tool/prompts + notify clients |
-| `watchSkillDirectories()` | index.ts | Set up chokidar watchers |
+| `watchSkillDirectories()` | index.ts | Set up chokidar watchers (skipped in static mode) |
 | `generateInstructions()` | skill-discovery.ts | Create XML skill list |
 | `getToolDescription()` | skill-tool.ts | Usage text + skill list for tool desc |
 | `registerSkillPrompts()` | skill-prompts.ts | Register /skill + per-skill prompts |
@@ -73,11 +85,13 @@ src/
 
 ```typescript
 capabilities: {
-  tools: { listChanged: true },      // Dynamic tool updates
+  tools: { listChanged: !isStatic },      // Dynamic tool updates (disabled in static mode)
   resources: { subscribe: true, listChanged: true },
-  prompts: { listChanged: true }     // Dynamic prompt updates
+  prompts: { listChanged: !isStatic }     // Dynamic prompt updates (disabled in static mode)
 }
 ```
+
+In static mode (`--static` or `SKILLJACK_STATIC=true`), `tools.listChanged` and `prompts.listChanged` are set to `false`. Resource subscriptions remain fully dynamic.
 
 ## Notifications Sent
 
