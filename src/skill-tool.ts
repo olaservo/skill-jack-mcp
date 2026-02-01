@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { SkillMetadata, loadSkillContent, generateInstructions } from "./skill-discovery.js";
+import { SkillMetadata, loadSkillContent, generateInstructions, getModelInvocableSkills } from "./skill-discovery.js";
 
 /**
  * Shared state for dynamic skill management.
@@ -53,8 +53,9 @@ export function getToolDescription(skillState: SkillState): string {
     "actually calling this tool. This is a BLOCKING REQUIREMENT: invoke this tool BEFORE " +
     "generating any other response about the task.\n\n";
 
-  const skills = Array.from(skillState.skillMap.values());
-  return usage + generateInstructions(skills);
+  const allSkills = Array.from(skillState.skillMap.values());
+  const modelInvocableSkills = getModelInvocableSkills(allSkills);
+  return usage + generateInstructions(modelInvocableSkills);
 }
 
 export function registerSkillTool(
