@@ -6,9 +6,10 @@
  * Provides global skills with tools for progressive disclosure.
  *
  * Usage:
- *   skilljack-mcp /path/to/skills [/path2 ...]   # One or more directories
- *   SKILLS_DIR=/path/to/skills skilljack-mcp    # Single directory via env
- *   SKILLS_DIR=/path1,/path2 skilljack-mcp      # Multiple (comma-separated)
+ *   skilljack-mcp /path/to/skills [/path2 ...]           # Local directories
+ *   skilljack-mcp github.com/owner/repo                  # GitHub repository
+ *   skilljack-mcp /local github.com/owner/repo           # Mixed local + GitHub
+ *   SKILLS_DIR=/path,github.com/owner/repo skilljack-mcp # Via environment
  */
 
 import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -26,6 +27,16 @@ import {
   refreshSubscriptions,
   SubscriptionManager,
 } from "./subscriptions.js";
+import {
+  isGitHubUrl,
+  parseGitHubUrl,
+  isRepoAllowed,
+  getGitHubConfig,
+  GitHubRepoSpec,
+  GitHubConfig,
+} from "./github-config.js";
+import { syncAllRepos, SyncOptions, SyncResult } from "./github-sync.js";
+import { createPollingManager, PollingManager } from "./github-polling.js";
 
 /**
  * Subdirectories to check for skills within the configured directory.
@@ -39,22 +50,21 @@ const SKILL_SUBDIRS = [".claude/skills", "skills"];
 const PATH_LIST_SEPARATOR = ",";
 
 /**
- * Get the skills directories from command line args and/or environment.
- * Returns deduplicated, resolved paths.
+ * Get all paths from command line args and/or environment.
+ * Returns raw paths (not resolved) for classification.
  */
-function getSkillsDirs(): string[] {
-  const dirs: string[] = [];
+function getAllPaths(): string[] {
+  const paths: string[] = [];
 
   // Collect all non-flag command-line arguments (comma-separated supported)
   const args = process.argv.slice(2);
   for (const arg of args) {
     if (!arg.startsWith("-")) {
-      const paths = arg
+      const argPaths = arg
         .split(PATH_LIST_SEPARATOR)
         .map((p) => p.trim())
-        .filter((p) => p.length > 0)
-        .map((p) => path.resolve(p));
-      dirs.push(...paths);
+        .filter((p) => p.length > 0);
+      paths.push(...argPaths);
     }
   }
 
@@ -64,13 +74,53 @@ function getSkillsDirs(): string[] {
     const envPaths = envDir
       .split(PATH_LIST_SEPARATOR)
       .map((p) => p.trim())
-      .filter((p) => p.length > 0)
-      .map((p) => path.resolve(p));
-    dirs.push(...envPaths);
+      .filter((p) => p.length > 0);
+    paths.push(...envPaths);
   }
 
-  // Deduplicate by resolved path
-  return [...new Set(dirs)];
+  return paths;
+}
+
+/**
+ * Classify paths as local directories or GitHub repositories.
+ * GitHub URLs are detected by checking for "github.com" in the path.
+ */
+function classifyPaths(paths: string[]): {
+  localDirs: string[];
+  githubSpecs: GitHubRepoSpec[];
+} {
+  const localDirs: string[] = [];
+  const githubSpecs: GitHubRepoSpec[] = [];
+
+  for (const p of paths) {
+    if (isGitHubUrl(p)) {
+      try {
+        const spec = parseGitHubUrl(p);
+        githubSpecs.push(spec);
+      } catch (error) {
+        console.error(`Warning: Invalid GitHub URL "${p}": ${error}`);
+      }
+    } else {
+      // Local directory - resolve the path
+      localDirs.push(path.resolve(p));
+    }
+  }
+
+  // Deduplicate local dirs
+  const uniqueLocalDirs = [...new Set(localDirs)];
+
+  // Deduplicate GitHub specs by owner/repo
+  const seenRepos = new Set<string>();
+  const uniqueGithubSpecs = githubSpecs.filter((spec) => {
+    const key = `${spec.owner}/${spec.repo}`;
+    if (seenRepos.has(key)) {
+      return false;
+    }
+    seenRepos.add(key);
+    return true;
+  });
+
+  return { localDirs: uniqueLocalDirs, githubSpecs: uniqueGithubSpecs };
 }
 
 /**
@@ -292,17 +342,83 @@ function watchSkillDirectories(
 const subscriptionManager = createSubscriptionManager();
 
 async function main() {
-  const skillsDirs = getSkillsDirs();
+  const allPaths = getAllPaths();
 
-  if (skillsDirs.length === 0) {
-    console.error("No skills directory configured.");
-    console.error("Usage: skilljack-mcp /path/to/skills [/path/to/more/skills ...]");
+  if (allPaths.length === 0) {
+    console.error("No skills source configured.");
+    console.error("Usage: skilljack-mcp /path/to/skills [github.com/owner/repo ...]");
     console.error("   or: SKILLS_DIR=/path/to/skills skilljack-mcp");
-    console.error("   or: SKILLS_DIR=/path1,/path2 skilljack-mcp");
+    console.error("   or: SKILLS_DIR=github.com/owner/repo skilljack-mcp");
+    console.error("");
+    console.error("Examples:");
+    console.error("  skilljack-mcp /local/skills                    # Local directory");
+    console.error("  skilljack-mcp github.com/olaservo/my-skills    # GitHub repo");
+    console.error("  skilljack-mcp github.com/org/repo@v1.0.0       # Pinned version");
+    console.error("  skilljack-mcp github.com/org/mono/skills       # Monorepo subpath");
     process.exit(1);
   }
 
-  console.error(`Skills directories: ${skillsDirs.join(", ")}`);
+  // Classify paths as local or GitHub
+  const { localDirs, githubSpecs } = classifyPaths(allPaths);
+
+  // Get GitHub configuration
+  const githubConfig = getGitHubConfig();
+
+  // Sync GitHub repositories
+  let githubDirs: string[] = [];
+  let allowedGithubSpecs: GitHubRepoSpec[] = [];
+
+  if (githubSpecs.length > 0) {
+    console.error(`GitHub repos: ${githubSpecs.map((s) => `${s.owner}/${s.repo}`).join(", ")}`);
+
+    // Filter by allowlist
+    for (const spec of githubSpecs) {
+      if (!isRepoAllowed(spec, githubConfig)) {
+        console.error(
+          `Blocked: ${spec.owner}/${spec.repo} not in allowed orgs/users. ` +
+            `Set GITHUB_ALLOWED_ORGS or GITHUB_ALLOWED_USERS to permit.`
+        );
+        continue;
+      }
+      allowedGithubSpecs.push(spec);
+    }
+
+    if (allowedGithubSpecs.length > 0) {
+      console.error(`Syncing ${allowedGithubSpecs.length} GitHub repo(s)...`);
+
+      const syncOptions: SyncOptions = {
+        cacheDir: githubConfig.cacheDir,
+        token: githubConfig.token,
+        shallowClone: true,
+      };
+
+      const results = await syncAllRepos(allowedGithubSpecs, syncOptions);
+
+      // Collect successful sync paths
+      for (const result of results) {
+        if (!result.error) {
+          githubDirs.push(result.localPath);
+        }
+      }
+
+      console.error(`Successfully synced ${githubDirs.length}/${allowedGithubSpecs.length} repo(s)`);
+    }
+  }
+
+  // Combine all skill directories
+  const skillsDirs = [...localDirs, ...githubDirs];
+
+  if (skillsDirs.length === 0) {
+    console.error("No valid skills directories available.");
+    process.exit(1);
+  }
+
+  if (localDirs.length > 0) {
+    console.error(`Local directories: ${localDirs.join(", ")}`);
+  }
+  if (githubDirs.length > 0) {
+    console.error(`GitHub cache directories: ${githubDirs.join(", ")}`);
+  }
 
   // Discover skills at startup
   const skills = discoverSkillsFromDirs(skillsDirs);
@@ -334,6 +450,29 @@ async function main() {
 
   // Set up file watchers for skill directory changes
   watchSkillDirectories(skillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+
+  // Set up GitHub polling for updates
+  let pollingManager: PollingManager | null = null;
+  if (allowedGithubSpecs.length > 0 && githubConfig.pollIntervalMs > 0) {
+    const syncOptions: SyncOptions = {
+      cacheDir: githubConfig.cacheDir,
+      token: githubConfig.token,
+      shallowClone: true,
+    };
+
+    pollingManager = createPollingManager(allowedGithubSpecs, syncOptions, {
+      intervalMs: githubConfig.pollIntervalMs,
+      onUpdate: (spec, result) => {
+        console.error(`GitHub update detected for ${spec.owner}/${spec.repo}`);
+        refreshSkills(skillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+      },
+      onError: (spec, error) => {
+        console.error(`GitHub polling error for ${spec.owner}/${spec.repo}: ${error.message}`);
+      },
+    });
+
+    pollingManager.start();
+  }
 
   // Connect via stdio transport
   const transport = new StdioServerTransport();
