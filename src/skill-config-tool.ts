@@ -8,6 +8,7 @@
  */
 
 import * as fs from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
@@ -118,6 +119,16 @@ export function registerSkillConfigTool(
         "Open the skills directory configuration UI. " +
         "Use when user wants to configure, add, or remove skill directories.",
       inputSchema: {},
+      outputSchema: {
+        directories: z.array(z.object({
+          path: z.string(),
+          source: z.string(),
+          valid: z.boolean(),
+          skillCount: z.number().optional(),
+        })),
+        activeSource: z.string(),
+        isOverridden: z.boolean(),
+      },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
       annotations: {
         readOnlyHint: true,
@@ -154,6 +165,18 @@ export function registerSkillConfigTool(
       title: "Add Skills Directory",
       description: "Add a skills directory to the configuration.",
       inputSchema: AddDirectoryInputSchema,
+      outputSchema: {
+        success: z.boolean(),
+        directories: z.array(z.object({
+          path: z.string(),
+          source: z.string(),
+          valid: z.boolean(),
+          skillCount: z.number().optional(),
+        })).optional(),
+        activeSource: z.string().optional(),
+        isOverridden: z.boolean().optional(),
+        error: z.string().optional(),
+      },
       _meta: {
         ui: {
           resourceUri: RESOURCE_URI,
@@ -216,6 +239,18 @@ export function registerSkillConfigTool(
       title: "Remove Skills Directory",
       description: "Remove a skills directory from the configuration.",
       inputSchema: RemoveDirectoryInputSchema,
+      outputSchema: {
+        success: z.boolean(),
+        directories: z.array(z.object({
+          path: z.string(),
+          source: z.string(),
+          valid: z.boolean(),
+          skillCount: z.number().optional(),
+        })).optional(),
+        activeSource: z.string().optional(),
+        isOverridden: z.boolean().optional(),
+        error: z.string().optional(),
+      },
       _meta: {
         ui: {
           resourceUri: RESOURCE_URI,
@@ -273,15 +308,12 @@ export function registerSkillConfigTool(
   // Register the HTML UI resource
   registerAppResource(
     server,
-    "Skills Configuration UI",
     RESOURCE_URI,
-    {
-      description: "Interactive UI for configuring skill directories",
-      mimeType: RESOURCE_MIME_TYPE,
-    },
+    RESOURCE_URI,
+    { mimeType: RESOURCE_MIME_TYPE },
     async (): Promise<ReadResourceResult> => {
       const uiPath = getUIPath();
-      const html = fs.readFileSync(uiPath, "utf-8");
+      const html = await fsPromises.readFile(uiPath, "utf-8");
 
       return {
         contents: [
