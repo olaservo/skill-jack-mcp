@@ -27,6 +27,24 @@
     <div class="loading">Loading directories...</div>
   </div>
 
+  <!-- Settings Section -->
+  <div class="settings-section">
+    <h2>Settings</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <label for="static-mode-toggle">Static Mode</label>
+        <div class="setting-hint">
+          Freeze skills list at startup. Disables file watching and dynamic updates.
+          <br><strong>Requires server restart to take effect.</strong>
+        </div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="static-mode-toggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
   <!-- Add Directory Modal -->
   <div class="modal-overlay" id="add-modal">
     <div class="modal">

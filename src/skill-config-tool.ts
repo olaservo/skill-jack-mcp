@@ -23,6 +23,8 @@ import {
   getConfigState,
   addDirectoryToConfig,
   removeDirectoryFromConfig,
+  getStaticModeFromConfig,
+  setStaticModeInConfig,
   DirectoryInfo,
 } from "./skill-config.js";
 import { SkillState } from "./skill-tool.js";
@@ -128,6 +130,7 @@ export function registerSkillConfigTool(
         })),
         activeSource: z.string(),
         isOverridden: z.boolean(),
+        staticMode: z.boolean(),
       },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
       annotations: {
@@ -152,6 +155,7 @@ export function registerSkillConfigTool(
           directories,
           activeSource: configState.activeSource,
           isOverridden: configState.isOverridden,
+          staticMode: getStaticModeFromConfig(),
         },
       };
     }
@@ -210,6 +214,7 @@ export function registerSkillConfigTool(
             directories,
             activeSource: getConfigState().activeSource,
             isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
           },
         };
       } catch (error) {
@@ -284,6 +289,7 @@ export function registerSkillConfigTool(
             directories,
             activeSource: getConfigState().activeSource,
             isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
           },
         };
       } catch (error) {
@@ -293,6 +299,71 @@ export function registerSkillConfigTool(
             {
               type: "text",
               text: `Failed to remove directory: ${message}`,
+            },
+          ],
+          structuredContent: {
+            success: false,
+            error: message,
+          },
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Set static mode tool (UI-only, hidden from model)
+  registerAppTool(
+    server,
+    "skill-config-set-static-mode",
+    {
+      title: "Set Static Mode",
+      description: "Enable or disable static mode (freezes skills list at startup).",
+      inputSchema: {
+        enabled: z.boolean().describe("Whether to enable static mode"),
+      },
+      outputSchema: {
+        success: z.boolean(),
+        staticMode: z.boolean().optional(),
+        error: z.string().optional(),
+      },
+      _meta: {
+        ui: {
+          resourceUri: RESOURCE_URI,
+          visibility: ["app"], // Hidden from model, UI can call it
+        },
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (args): Promise<CallToolResult> => {
+      const { enabled } = args as { enabled: boolean };
+
+      try {
+        setStaticModeInConfig(enabled);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Static mode ${enabled ? "enabled" : "disabled"}. Restart server for changes to take effect.`,
+            },
+          ],
+          structuredContent: {
+            success: true,
+            staticMode: enabled,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to set static mode: ${message}`,
             },
           ],
           structuredContent: {

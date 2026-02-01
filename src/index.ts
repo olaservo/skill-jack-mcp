@@ -34,7 +34,7 @@ import {
   refreshSubscriptions,
   SubscriptionManager,
 } from "./subscriptions.js";
-import { getActiveDirectories } from "./skill-config.js";
+import { getActiveDirectories, getStaticModeFromConfig } from "./skill-config.js";
 import { registerSkillConfigTool } from "./skill-config-tool.js";
 
 /**
@@ -51,9 +51,10 @@ let currentSkillsDirs: string[] = [];
  * Check if static mode is enabled.
  * Static mode freezes the skills list at startup - no file watching,
  * no listChanged notifications for tools/prompts.
+ * Priority: CLI flag > env var > config file
  */
 function getStaticMode(): boolean {
-  // Check CLI flag
+  // Check CLI flag (highest priority)
   const args = process.argv.slice(2);
   if (args.includes("--static")) {
     return true;
@@ -61,7 +62,12 @@ function getStaticMode(): boolean {
 
   // Check environment variable
   const envValue = process.env.SKILLJACK_STATIC?.toLowerCase();
-  return envValue === "true" || envValue === "1" || envValue === "yes";
+  if (envValue === "true" || envValue === "1" || envValue === "yes") {
+    return true;
+  }
+
+  // Check config file (lowest priority)
+  return getStaticModeFromConfig();
 }
 
 /**

@@ -16,6 +16,7 @@ import * as os from "node:os";
  */
 export interface SkillConfig {
   skillDirectories: string[];
+  staticMode?: boolean;
 }
 
 /**
@@ -92,13 +93,14 @@ export function loadConfigFile(): SkillConfig {
 
     // Validate and normalize
     if (!parsed.skillDirectories || !Array.isArray(parsed.skillDirectories)) {
-      return { skillDirectories: [] };
+      return { skillDirectories: [], staticMode: parsed.staticMode === true };
     }
 
     return {
       skillDirectories: parsed.skillDirectories
         .filter((p: unknown) => typeof p === "string")
         .map((p: string) => path.resolve(p)),
+      staticMode: parsed.staticMode === true,
     };
   } catch (error) {
     console.error(`Warning: Failed to parse config file: ${error}`);
@@ -312,4 +314,21 @@ export function removeDirectoryFromConfig(directory: string): void {
 export function getActiveDirectories(): string[] {
   const state = getConfigState();
   return state.directories.map((d) => d.path);
+}
+
+/**
+ * Get static mode setting from config file.
+ */
+export function getStaticModeFromConfig(): boolean {
+  const config = loadConfigFile();
+  return config.staticMode === true;
+}
+
+/**
+ * Set static mode setting in config file.
+ */
+export function setStaticModeInConfig(enabled: boolean): void {
+  const config = loadConfigFile();
+  config.staticMode = enabled;
+  saveConfigFile(config);
 }

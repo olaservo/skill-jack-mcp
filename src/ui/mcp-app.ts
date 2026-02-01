@@ -20,6 +20,7 @@ interface ConfigState {
   directories: DirectoryInfo[];
   activeSource: string;
   isOverridden: boolean;
+  staticMode?: boolean;
   success?: boolean;
   error?: string;
 }
@@ -28,6 +29,7 @@ interface ConfigState {
 let directories: DirectoryInfo[] = [];
 let activeSource = "config";
 let isOverridden = false;
+let staticMode = false;
 let app: App | null = null;
 
 // DOM Elements
@@ -40,6 +42,7 @@ const overrideSource = document.getElementById("override-source")!;
 const toast = document.getElementById("toast")!;
 const directoryInput = document.getElementById("directory-path") as HTMLInputElement;
 const addSubmitBtn = document.getElementById("add-submit-btn") as HTMLButtonElement;
+const staticModeToggle = document.getElementById("static-mode-toggle") as HTMLInputElement;
 
 // Handle host context changes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,6 +77,9 @@ function updateState(data: ConfigState) {
   if (data.isOverridden !== undefined) {
     isOverridden = data.isOverridden;
   }
+  if (data.staticMode !== undefined) {
+    staticMode = data.staticMode;
+  }
 
   render();
 }
@@ -84,6 +90,7 @@ function render() {
   renderOverrideBanner();
   renderDirectories();
   updateAddButton();
+  renderStaticModeToggle();
 }
 
 function renderStats() {
@@ -159,6 +166,49 @@ function updateAddButton() {
       " override is active";
   } else {
     addBtn.title = "";
+  }
+}
+
+function renderStaticModeToggle() {
+  if (staticModeToggle) {
+    staticModeToggle.checked = staticMode;
+  }
+}
+
+// Toggle static mode
+async function setStaticModeEnabled(enabled: boolean) {
+  staticModeToggle.disabled = true;
+
+  try {
+    const result = await app!.callServerTool({
+      name: "skill-config-set-static-mode",
+      arguments: { enabled },
+    });
+
+    console.log("Static mode result:", result);
+
+    const structured = result.structuredContent as unknown as { success?: boolean; staticMode?: boolean; error?: string };
+    if (structured?.success) {
+      staticMode = structured.staticMode ?? enabled;
+      renderStaticModeToggle();
+      showToast(
+        enabled
+          ? "Static mode enabled. Restart server for changes to take effect."
+          : "Static mode disabled. Restart server for changes to take effect.",
+        "success"
+      );
+    } else {
+      // Revert toggle on failure
+      staticModeToggle.checked = staticMode;
+      showToast(structured?.error || "Failed to change static mode", "error");
+    }
+  } catch (error) {
+    console.error("Set static mode error:", error);
+    // Revert toggle on error
+    staticModeToggle.checked = staticMode;
+    showToast((error as Error).message || "Failed to change static mode", "error");
+  } finally {
+    staticModeToggle.disabled = false;
   }
 }
 
@@ -266,6 +316,10 @@ directoryInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     addDirectory();
   }
+});
+staticModeToggle?.addEventListener("change", (e) => {
+  const enabled = (e.target as HTMLInputElement).checked;
+  setStaticModeEnabled(enabled);
 });
 
 // 1. Create app instance
