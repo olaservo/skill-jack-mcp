@@ -6,10 +6,11 @@
  * Provides global skills with tools for progressive disclosure.
  *
  * Usage:
- *   skilljack-mcp /path/to/skills [/path2 ...]   # One or more directories
- *   SKILLS_DIR=/path/to/skills skilljack-mcp    # Single directory via env
- *   SKILLS_DIR=/path1,/path2 skilljack-mcp      # Multiple (comma-separated)
- *   (or configure via the skill-config UI)
+ *   skilljack-mcp /path/to/skills [/path2 ...]           # Local directories
+ *   skilljack-mcp github.com/owner/repo                  # GitHub repository
+ *   skilljack-mcp /local github.com/owner/repo           # Mixed local + GitHub
+ *   SKILLS_DIR=/path,github.com/owner/repo skilljack-mcp # Via environment
+ *   (or configure local directories via the skill-config UI)
  */
 
 import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -30,6 +31,15 @@ import {
 import { getActiveDirectories, getSkillInvocationOverrides } from "./skill-config.js";
 import { registerSkillConfigTool } from "./skill-config-tool.js";
 import { registerSkillDisplayTool } from "./skill-display-tool.js";
+import {
+  isGitHubUrl,
+  parseGitHubUrl,
+  isRepoAllowed,
+  getGitHubConfig,
+  GitHubRepoSpec,
+} from "./github-config.js";
+import { syncAllRepos, SyncOptions } from "./github-sync.js";
+import { createPollingManager, PollingManager } from "./github-polling.js";
 
 /**
  * Subdirectories to check for skills within the configured directory.
@@ -38,8 +48,56 @@ const SKILL_SUBDIRS = [".claude/skills", "skills"];
 
 /**
  * Current skill directories (mutable to support UI-driven changes).
+ * This includes both local directories and GitHub cache directories.
  */
 let currentSkillsDirs: string[] = [];
+
+/**
+ * GitHub specs that are currently being polled.
+ */
+let currentGithubSpecs: GitHubRepoSpec[] = [];
+
+/**
+ * Classify paths as local directories or GitHub repositories.
+ * GitHub URLs are detected by checking for "github.com" in the path.
+ */
+function classifyPaths(paths: string[]): {
+  localDirs: string[];
+  githubSpecs: GitHubRepoSpec[];
+} {
+  const localDirs: string[] = [];
+  const githubSpecs: GitHubRepoSpec[] = [];
+
+  for (const p of paths) {
+    if (isGitHubUrl(p)) {
+      try {
+        const spec = parseGitHubUrl(p);
+        githubSpecs.push(spec);
+      } catch (error) {
+        console.error(`Warning: Invalid GitHub URL "${p}": ${error}`);
+      }
+    } else {
+      // Local directory - resolve the path
+      localDirs.push(path.resolve(p));
+    }
+  }
+
+  // Deduplicate local dirs
+  const uniqueLocalDirs = [...new Set(localDirs)];
+
+  // Deduplicate GitHub specs by owner/repo
+  const seenRepos = new Set<string>();
+  const uniqueGithubSpecs = githubSpecs.filter((spec) => {
+    const key = `${spec.owner}/${spec.repo}`;
+    if (seenRepos.has(key)) {
+      return false;
+    }
+    seenRepos.add(key);
+    return true;
+  });
+
+  return { localDirs: uniqueLocalDirs, githubSpecs: uniqueGithubSpecs };
+}
 
 /**
  * Shared state for skill management.
@@ -265,16 +323,72 @@ const subscriptionManager = createSubscriptionManager();
 
 async function main() {
   // Get skill directories from CLI args, env var, or config file
-  currentSkillsDirs = getActiveDirectories();
+  // This returns paths that may include GitHub URLs
+  const allPaths = getActiveDirectories();
+
+  // Classify paths as local or GitHub
+  const { localDirs, githubSpecs } = classifyPaths(allPaths);
+
+  // Get GitHub configuration
+  const githubConfig = getGitHubConfig();
+
+  // Sync GitHub repositories
+  let githubDirs: string[] = [];
+
+  if (githubSpecs.length > 0) {
+    console.error(`GitHub repos: ${githubSpecs.map((s) => `${s.owner}/${s.repo}`).join(", ")}`);
+
+    // Filter by allowlist
+    for (const spec of githubSpecs) {
+      if (!isRepoAllowed(spec, githubConfig)) {
+        console.error(
+          `Blocked: ${spec.owner}/${spec.repo} not in allowed orgs/users. ` +
+            `Set GITHUB_ALLOWED_ORGS or GITHUB_ALLOWED_USERS to permit.`
+        );
+        continue;
+      }
+      currentGithubSpecs.push(spec);
+    }
+
+    if (currentGithubSpecs.length > 0) {
+      console.error(`Syncing ${currentGithubSpecs.length} GitHub repo(s)...`);
+
+      const syncOptions: SyncOptions = {
+        cacheDir: githubConfig.cacheDir,
+        token: githubConfig.token,
+        shallowClone: true,
+      };
+
+      const results = await syncAllRepos(currentGithubSpecs, syncOptions);
+
+      // Collect successful sync paths
+      for (const result of results) {
+        if (!result.error) {
+          githubDirs.push(result.localPath);
+        }
+      }
+
+      console.error(`Successfully synced ${githubDirs.length}/${currentGithubSpecs.length} repo(s)`);
+    }
+  }
+
+  // Combine all skill directories
+  currentSkillsDirs = [...localDirs, ...githubDirs];
 
   // Allow starting with no directories - user can configure via UI
   if (currentSkillsDirs.length === 0) {
     console.error("No skills directories configured.");
     console.error("You can configure directories via the skill-config tool UI,");
     console.error("or use CLI args: skilljack-mcp /path/to/skills");
+    console.error("or use GitHub: skilljack-mcp github.com/owner/repo");
     console.error("or set SKILLS_DIR environment variable.");
   } else {
-    console.error(`Skills directories: ${currentSkillsDirs.join(", ")}`);
+    if (localDirs.length > 0) {
+      console.error(`Local directories: ${localDirs.join(", ")}`);
+    }
+    if (githubDirs.length > 0) {
+      console.error(`GitHub cache directories: ${githubDirs.join(", ")}`);
+    }
   }
 
   // Discover skills at startup
@@ -314,7 +428,10 @@ async function main() {
   registerSkillConfigTool(server, skillState, () => {
     // Callback when directories change via UI
     // Reload directories from config and refresh skills
-    currentSkillsDirs = getActiveDirectories();
+    // Note: UI only manages local directories, GitHub repos are managed via CLI/env
+    const newPaths = getActiveDirectories();
+    const { localDirs: newLocalDirs } = classifyPaths(newPaths);
+    currentSkillsDirs = [...newLocalDirs, ...githubDirs];
     console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
     refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
   });
@@ -330,6 +447,29 @@ async function main() {
   // Set up file watchers for skill directory changes
   if (currentSkillsDirs.length > 0) {
     watchSkillDirectories(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+  }
+
+  // Set up GitHub polling for updates
+  let pollingManager: PollingManager | null = null;
+  if (currentGithubSpecs.length > 0 && githubConfig.pollIntervalMs > 0) {
+    const syncOptions: SyncOptions = {
+      cacheDir: githubConfig.cacheDir,
+      token: githubConfig.token,
+      shallowClone: true,
+    };
+
+    pollingManager = createPollingManager(currentGithubSpecs, syncOptions, {
+      intervalMs: githubConfig.pollIntervalMs,
+      onUpdate: (spec, result) => {
+        console.error(`GitHub update detected for ${spec.owner}/${spec.repo}`);
+        refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+      },
+      onError: (spec, error) => {
+        console.error(`GitHub polling error for ${spec.owner}/${spec.repo}: ${error.message}`);
+      },
+    });
+
+    pollingManager.start();
   }
 
   // Connect via stdio transport

@@ -5,11 +5,14 @@
  * 1. CLI args (highest priority)
  * 2. SKILLS_DIR environment variable
  * 3. Config file (~/.skilljack/config.json)
+ *
+ * Supports both local directories and GitHub repository URLs.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { isGitHubUrl } from "./github-config.js";
 
 /**
  * Invocation settings that can be overridden per skill.
@@ -33,13 +36,36 @@ export interface SkillConfig {
 export type DirectorySource = "cli" | "env" | "config";
 
 /**
+ * Type of skill source (local directory or GitHub repo).
+ */
+export type SourceType = "local" | "github";
+
+/**
  * A skill directory with its source information.
  */
 export interface DirectoryInfo {
   path: string;
   source: DirectorySource;
+  type: SourceType;
   skillCount: number;
   valid: boolean;
+}
+
+/**
+ * Check if a path is valid (exists for local, always valid for GitHub).
+ */
+function isValidPath(p: string): boolean {
+  if (isGitHubUrl(p)) {
+    return true; // GitHub URLs are validated during sync
+  }
+  return fs.existsSync(p);
+}
+
+/**
+ * Get the source type for a path.
+ */
+function getSourceType(p: string): SourceType {
+  return isGitHubUrl(p) ? "github" : "local";
 }
 
 /**
@@ -99,11 +125,11 @@ export function loadConfigFile(): SkillConfig {
     const content = fs.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(content);
 
-    // Validate and normalize directories
+    // Validate and normalize directories (handle both local paths and GitHub URLs)
     const skillDirectories = Array.isArray(parsed.skillDirectories)
       ? parsed.skillDirectories
           .filter((p: unknown) => typeof p === "string")
-          .map((p: string) => path.resolve(p))
+          .map((p: string) => isGitHubUrl(p) ? p : path.resolve(p))
       : [];
 
     // Validate and normalize invocation overrides
@@ -145,7 +171,7 @@ export function saveConfigFile(config: SkillConfig): void {
 
 /**
  * Parse CLI arguments for skill directories.
- * Returns resolved absolute paths.
+ * Returns resolved absolute paths for local dirs, unchanged for GitHub URLs.
  */
 export function parseCLIArgs(): string[] {
   const dirs: string[] = [];
@@ -157,7 +183,7 @@ export function parseCLIArgs(): string[] {
         .split(PATH_LIST_SEPARATOR)
         .map((p) => p.trim())
         .filter((p) => p.length > 0)
-        .map((p) => path.resolve(p));
+        .map((p) => isGitHubUrl(p) ? p : path.resolve(p));
       dirs.push(...paths);
     }
   }
@@ -167,7 +193,7 @@ export function parseCLIArgs(): string[] {
 
 /**
  * Parse SKILLS_DIR environment variable.
- * Returns resolved absolute paths.
+ * Returns resolved absolute paths for local dirs, unchanged for GitHub URLs.
  */
 export function parseEnvVar(): string[] {
   const envDir = process.env.SKILLS_DIR;
@@ -179,7 +205,7 @@ export function parseEnvVar(): string[] {
     .split(PATH_LIST_SEPARATOR)
     .map((p) => p.trim())
     .filter((p) => p.length > 0)
-    .map((p) => path.resolve(p));
+    .map((p) => isGitHubUrl(p) ? p : path.resolve(p));
 
   return [...new Set(dirs)]; // Deduplicate
 }
@@ -196,8 +222,9 @@ export function getConfigState(): ConfigState {
       directories: cliDirs.map((p) => ({
         path: p,
         source: "cli" as DirectorySource,
+        type: getSourceType(p),
         skillCount: 0, // Will be filled in by caller
-        valid: fs.existsSync(p),
+        valid: isValidPath(p),
       })),
       activeSource: "cli",
       isOverridden: true,
@@ -211,8 +238,9 @@ export function getConfigState(): ConfigState {
       directories: envDirs.map((p) => ({
         path: p,
         source: "env" as DirectorySource,
+        type: getSourceType(p),
         skillCount: 0,
-        valid: fs.existsSync(p),
+        valid: isValidPath(p),
       })),
       activeSource: "env",
       isOverridden: true,
@@ -225,8 +253,9 @@ export function getConfigState(): ConfigState {
     directories: config.skillDirectories.map((p) => ({
       path: p,
       source: "config" as DirectorySource,
+      type: getSourceType(p),
       skillCount: 0,
-      valid: fs.existsSync(p),
+      valid: isValidPath(p),
     })),
     activeSource: "config",
     isOverridden: false,
@@ -248,8 +277,9 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
       all.push({
         path: p,
         source: "cli",
+        type: getSourceType(p),
         skillCount: 0,
-        valid: fs.existsSync(p),
+        valid: isValidPath(p),
       });
     }
   }
@@ -261,8 +291,9 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
       all.push({
         path: p,
         source: "env",
+        type: getSourceType(p),
         skillCount: 0,
-        valid: fs.existsSync(p),
+        valid: isValidPath(p),
       });
     }
   }
@@ -275,8 +306,9 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
       all.push({
         path: p,
         source: "config",
+        type: getSourceType(p),
         skillCount: 0,
-        valid: fs.existsSync(p),
+        valid: isValidPath(p),
       });
     }
   }
@@ -285,43 +317,47 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
 }
 
 /**
- * Add a directory to the config file.
+ * Add a directory or GitHub URL to the config file.
  * Does not affect CLI or env var configurations.
  */
 export function addDirectoryToConfig(directory: string): void {
-  const resolved = path.resolve(directory);
+  // For GitHub URLs, store as-is; for local paths, resolve to absolute
+  const normalized = isGitHubUrl(directory) ? directory : path.resolve(directory);
 
-  // Validate directory exists
-  if (!fs.existsSync(resolved)) {
-    throw new Error(`Directory does not exist: ${resolved}`);
-  }
+  // Validate local directories exist
+  if (!isGitHubUrl(directory)) {
+    if (!fs.existsSync(normalized)) {
+      throw new Error(`Directory does not exist: ${normalized}`);
+    }
 
-  if (!fs.statSync(resolved).isDirectory()) {
-    throw new Error(`Path is not a directory: ${resolved}`);
+    if (!fs.statSync(normalized).isDirectory()) {
+      throw new Error(`Path is not a directory: ${normalized}`);
+    }
   }
 
   const config = loadConfigFile();
 
   // Check for duplicate
-  if (config.skillDirectories.includes(resolved)) {
-    throw new Error(`Directory already configured: ${resolved}`);
+  if (config.skillDirectories.includes(normalized)) {
+    throw new Error(`Already configured: ${normalized}`);
   }
 
-  config.skillDirectories.push(resolved);
+  config.skillDirectories.push(normalized);
   saveConfigFile(config);
 }
 
 /**
- * Remove a directory from the config file.
+ * Remove a directory or GitHub URL from the config file.
  * Only removes from config file, not CLI or env var.
  */
 export function removeDirectoryFromConfig(directory: string): void {
-  const resolved = path.resolve(directory);
+  // For GitHub URLs, use as-is; for local paths, resolve to absolute
+  const normalized = isGitHubUrl(directory) ? directory : path.resolve(directory);
   const config = loadConfigFile();
 
-  const index = config.skillDirectories.indexOf(resolved);
+  const index = config.skillDirectories.indexOf(normalized);
   if (index === -1) {
-    throw new Error(`Directory not found in config: ${resolved}`);
+    throw new Error(`Not found in config: ${normalized}`);
   }
 
   config.skillDirectories.splice(index, 1);

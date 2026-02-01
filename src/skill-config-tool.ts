@@ -123,6 +123,7 @@ export function registerSkillConfigTool(
         directories: z.array(z.object({
           path: z.string(),
           source: z.string(),
+          type: z.string(),
           valid: z.boolean(),
           skillCount: z.number().optional(),
         })),
@@ -170,6 +171,7 @@ export function registerSkillConfigTool(
         directories: z.array(z.object({
           path: z.string(),
           source: z.string(),
+          type: z.string(),
           valid: z.boolean(),
           skillCount: z.number().optional(),
         })).optional(),
@@ -244,6 +246,7 @@ export function registerSkillConfigTool(
         directories: z.array(z.object({
           path: z.string(),
           source: z.string(),
+          type: z.string(),
           valid: z.boolean(),
           skillCount: z.number().optional(),
         })).optional(),
