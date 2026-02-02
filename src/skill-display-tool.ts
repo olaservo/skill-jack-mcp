@@ -87,7 +87,7 @@ interface SkillDisplayInfo {
   isAssistantOverridden: boolean;
   isUserOverridden: boolean;
   // Source information
-  sourceType: "local" | "github";
+  sourceType: "local" | "github" | "bundled";
   sourceDisplayName: string;
   sourceOwner?: string;
   sourceRepo?: string;

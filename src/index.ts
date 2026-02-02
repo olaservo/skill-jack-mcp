@@ -25,7 +25,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import chokidar from "chokidar";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { discoverSkills, createSkillMap, applyInvocationOverrides, SkillSource, DEFAULT_SKILL_SOURCE } from "./skill-discovery.js";
+import { fileURLToPath } from "node:url";
+import { discoverSkills, createSkillMap, applyInvocationOverrides, SkillSource, DEFAULT_SKILL_SOURCE, BUNDLED_SKILL_SOURCE } from "./skill-discovery.js";
 import { registerSkillTool, getToolDescription, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import { registerSkillPrompts, refreshPrompts, PromptRegistry } from "./skill-prompts.js";
@@ -55,6 +56,16 @@ import { createPollingManager, PollingManager } from "./github-polling.js";
 const SKILL_SUBDIRS = [".claude/skills", "skills"];
 
 /**
+ * Get the path to bundled skills directory.
+ * Resolves relative to the compiled module location.
+ */
+function getBundledSkillsDir(): string {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  // From dist/index.js, go up one level to package root, then into skills/
+  return path.resolve(currentDir, "..", "skills");
+}
+
+/**
  * Map from directory path to its source information.
  * Used to tag discovered skills with their origin.
  */
@@ -69,11 +80,13 @@ interface DirectorySourceMap {
  * @param localDirs - Local skill directories
  * @param githubSpecs - GitHub repository specifications
  * @param cacheDir - GitHub cache directory path
+ * @param bundledDir - Optional bundled skills directory
  */
 function buildDirectorySourceMap(
   localDirs: string[],
   githubSpecs: GitHubRepoSpec[],
-  cacheDir: string
+  cacheDir: string,
+  bundledDir?: string
 ): DirectorySourceMap {
   const map: DirectorySourceMap = {};
 
@@ -103,6 +116,15 @@ function buildDirectorySourceMap(
     // Also map standard subdirectories
     for (const subdir of SKILL_SUBDIRS) {
       map[path.join(cachePath, subdir)] = source;
+    }
+  }
+
+  // Map bundled skills directory
+  if (bundledDir) {
+    map[bundledDir] = BUNDLED_SKILL_SOURCE;
+    // Also map standard subdirectories
+    for (const subdir of SKILL_SUBDIRS) {
+      map[path.join(bundledDir, subdir)] = BUNDLED_SKILL_SOURCE;
     }
   }
 
@@ -478,26 +500,31 @@ async function main() {
     }
   }
 
+  // Get bundled skills directory (ships with the package)
+  const bundledSkillsDir = getBundledSkillsDir();
+  const hasBundledSkills = fs.existsSync(bundledSkillsDir);
+
   // Combine all skill directories
-  currentSkillsDirs = [...localDirs, ...githubDirs];
+  // User directories come first so they can override bundled skills (first-wins deduplication)
+  currentSkillsDirs = [...localDirs, ...githubDirs, ...(hasBundledSkills ? [bundledSkillsDir] : [])];
 
   // Build source map for skill discovery
-  currentSourceMap = buildDirectorySourceMap(localDirs, currentGithubSpecs, githubConfig.cacheDir);
+  currentSourceMap = buildDirectorySourceMap(
+    localDirs,
+    currentGithubSpecs,
+    githubConfig.cacheDir,
+    hasBundledSkills ? bundledSkillsDir : undefined
+  );
 
-  // Allow starting with no directories - user can configure via UI
-  if (currentSkillsDirs.length === 0) {
-    console.error("No skills directories configured.");
-    console.error("You can configure directories via the skill-config tool UI,");
-    console.error("or use CLI args: skilljack-mcp /path/to/skills");
-    console.error("or use GitHub: skilljack-mcp github.com/owner/repo");
-    console.error("or set SKILLS_DIR environment variable.");
-  } else {
-    if (localDirs.length > 0) {
-      console.error(`Local directories: ${localDirs.join(", ")}`);
-    }
-    if (githubDirs.length > 0) {
-      console.error(`GitHub cache directories: ${githubDirs.join(", ")}`);
-    }
+  // Log configured directories
+  if (localDirs.length > 0) {
+    console.error(`Local directories: ${localDirs.join(", ")}`);
+  }
+  if (githubDirs.length > 0) {
+    console.error(`GitHub cache directories: ${githubDirs.join(", ")}`);
+  }
+  if (hasBundledSkills) {
+    console.error(`Bundled skills: ${bundledSkillsDir}`);
   }
 
   if (isStatic) {
@@ -582,8 +609,14 @@ async function main() {
       // Update current state
       currentGithubSpecs = allowedGithubSpecs;
       githubDirs = newGithubDirs;
-      currentSkillsDirs = [...newLocalDirs, ...newGithubDirs];
-      currentSourceMap = buildDirectorySourceMap(newLocalDirs, allowedGithubSpecs, freshGithubConfig.cacheDir);
+      // Include bundled skills (last, so user skills take precedence)
+      currentSkillsDirs = [...newLocalDirs, ...newGithubDirs, ...(hasBundledSkills ? [bundledSkillsDir] : [])];
+      currentSourceMap = buildDirectorySourceMap(
+        newLocalDirs,
+        allowedGithubSpecs,
+        freshGithubConfig.cacheDir,
+        hasBundledSkills ? bundledSkillsDir : undefined
+      );
 
       console.error(`Config changed via UI. Directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
       refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
