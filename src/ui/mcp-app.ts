@@ -379,11 +379,9 @@ async function addAllowedOrg() {
 
     console.log("Add org result:", result);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const structured = result.structuredContent as any;
+    const structured = result.structuredContent as unknown as ConfigState;
     if (structured?.success) {
-      allowedOrgs = structured.allowedOrgs || [];
-      renderAllowedOrgs();
+      updateState(structured);
       closeOrgModal();
       showToast(`Added allowed org: ${org}`, "success");
     } else {
@@ -421,11 +419,9 @@ async function removeAllowedOrg(org: string) {
 
     console.log("Remove org result:", result);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const structured = result.structuredContent as any;
+    const structured = result.structuredContent as unknown as ConfigState;
     if (structured?.success) {
-      allowedOrgs = structured.allowedOrgs || [];
-      renderAllowedOrgs();
+      updateState(structured);
       showToast(`Removed allowed org: ${org}`, "success");
     } else {
       showToast(structured?.error || "Failed to remove org", "error");

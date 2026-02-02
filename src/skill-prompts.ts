@@ -17,7 +17,8 @@ import { SkillState } from "./skill-tool.js";
  */
 export interface PromptRegistry {
   skillPrompt: RegisteredPrompt; // The /skill prompt
-  perSkillPrompts: Map<string, RegisteredPrompt>; // skill-name -> prompt
+  perSkillPrompts: Map<string, RegisteredPrompt>; // skill-name -> prompt (active)
+  disabledPrompts: Map<string, RegisteredPrompt>; // skill-name -> prompt (disabled, can be re-enabled)
   skillsPrompt: RegisteredPrompt; // The /skills prompt (opens skill-display UI)
   skillConfigPrompt: RegisteredPrompt; // The /skill-config prompt (opens config UI)
 }
@@ -230,7 +231,7 @@ export function registerSkillPrompts(
     perSkillPrompts.set(name, prompt);
   }
 
-  return { skillPrompt, perSkillPrompts, skillsPrompt, skillConfigPrompt };
+  return { skillPrompt, perSkillPrompts, disabledPrompts: new Map(), skillsPrompt, skillConfigPrompt };
 }
 
 /**
@@ -264,6 +265,8 @@ export function refreshPrompts(
   for (const [name, prompt] of registry.perSkillPrompts) {
     if (!userInvocableNames.has(name)) {
       prompt.update({ enabled: false });
+      // Move to disabled map so we can re-enable later if needed
+      registry.disabledPrompts.set(name, prompt);
       registry.perSkillPrompts.delete(name);
     }
   }
@@ -276,6 +279,12 @@ export function refreshPrompts(
       registry.perSkillPrompts.get(name)!.update({
         description: skill.description,
       });
+    } else if (registry.disabledPrompts.has(name)) {
+      // Re-enable previously disabled prompt
+      const prompt = registry.disabledPrompts.get(name)!;
+      prompt.update({ enabled: true, description: skill.description });
+      registry.perSkillPrompts.set(name, prompt);
+      registry.disabledPrompts.delete(name);
     } else {
       // Register new skill prompt with embedded resource
       const skillPath = skill.path;

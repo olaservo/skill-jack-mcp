@@ -542,16 +542,50 @@ async function main() {
   // Register skill-config tool for UI-based directory configuration
   // Skip in static mode since skills list is frozen
   if (!isStatic) {
-    registerSkillConfigTool(server, skillState, () => {
-      // Callback when directories change via UI
+    registerSkillConfigTool(server, skillState, async () => {
+      // Callback when directories or GitHub settings change via UI
       // Reload directories from config and refresh skills
-      // Note: UI only manages local directories, GitHub repos are managed via CLI/env
       const newPaths = getActiveDirectories();
-      const { localDirs: newLocalDirs } = classifyPaths(newPaths);
-      currentSkillsDirs = [...newLocalDirs, ...githubDirs];
-      // Rebuild source map with updated local directories
-      currentSourceMap = buildDirectorySourceMap(newLocalDirs, currentGithubSpecs, githubConfig.cacheDir);
-      console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
+      const { localDirs: newLocalDirs, githubSpecs: newGithubSpecs } = classifyPaths(newPaths);
+
+      // Get fresh GitHub config (in case allowed orgs/users changed)
+      const freshGithubConfig = getGitHubConfig();
+
+      // Filter GitHub specs by allowlist and sync
+      const allowedGithubSpecs: GitHubRepoSpec[] = [];
+      for (const spec of newGithubSpecs) {
+        if (isRepoAllowed(spec, freshGithubConfig)) {
+          allowedGithubSpecs.push(spec);
+        } else {
+          console.error(`Blocked: ${spec.owner}/${spec.repo} not in allowed orgs/users.`);
+        }
+      }
+
+      // Sync any GitHub repos
+      let newGithubDirs: string[] = [];
+      if (allowedGithubSpecs.length > 0) {
+        console.error(`Syncing ${allowedGithubSpecs.length} GitHub repo(s)...`);
+        const syncOptions: SyncOptions = {
+          cacheDir: freshGithubConfig.cacheDir,
+          token: freshGithubConfig.token,
+          shallowClone: true,
+        };
+        const results = await syncAllRepos(allowedGithubSpecs, syncOptions);
+        for (const result of results) {
+          if (!result.error) {
+            newGithubDirs.push(result.localPath);
+          }
+        }
+        console.error(`Successfully synced ${newGithubDirs.length}/${allowedGithubSpecs.length} repo(s)`);
+      }
+
+      // Update current state
+      currentGithubSpecs = allowedGithubSpecs;
+      githubDirs = newGithubDirs;
+      currentSkillsDirs = [...newLocalDirs, ...newGithubDirs];
+      currentSourceMap = buildDirectorySourceMap(newLocalDirs, allowedGithubSpecs, freshGithubConfig.cacheDir);
+
+      console.error(`Config changed via UI. Directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
       refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
     });
 
