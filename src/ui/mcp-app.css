@@ -80,6 +80,30 @@ h1 {
   cursor: not-allowed;
 }
 
+/* Hint banner */
+.hint-banner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.hint-banner strong {
+  color: var(--text);
+}
+
+.hint-banner code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
 /* Override warning banner */
 .override-banner {
   background: var(--warning);
@@ -399,6 +423,15 @@ h1 {
   font-size: 11px;
   color: var(--text-secondary);
   margin-top: 4px;
+  line-height: 1.5;
+}
+
+.form-hint code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 10px;
 }
 
 .modal-footer {
@@ -439,6 +472,29 @@ h1 {
 
 .btn-secondary:hover {
   background: var(--border);
+}
+
+.btn-danger {
+  background: var(--error);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.modal-small {
+  max-width: 400px;
+}
+
+.confirm-path {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  background: var(--bg);
+  padding: 8px 12px;
+  border-radius: 4px;
+  word-break: break-all;
+  margin-top: 8px;
 }
 
 /* Toast */

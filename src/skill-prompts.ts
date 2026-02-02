@@ -17,7 +17,10 @@ import { SkillState } from "./skill-tool.js";
  */
 export interface PromptRegistry {
   skillPrompt: RegisteredPrompt; // The /skill prompt
-  perSkillPrompts: Map<string, RegisteredPrompt>; // skill-name -> prompt
+  perSkillPrompts: Map<string, RegisteredPrompt>; // skill-name -> prompt (active)
+  disabledPrompts: Map<string, RegisteredPrompt>; // skill-name -> prompt (disabled, can be re-enabled)
+  skillsPrompt: RegisteredPrompt; // The /skills prompt (opens skill-display UI)
+  skillConfigPrompt: RegisteredPrompt; // The /skill-config prompt (opens config UI)
 }
 
 /**
@@ -125,7 +128,51 @@ export function registerSkillPrompts(
     }
   );
 
-  // 2. Register per-skill prompts (no arguments needed)
+  // 2. Register /skills prompt (opens skill-display UI)
+  const skillsPrompt = server.registerPrompt(
+    "skills",
+    {
+      title: "View Skills",
+      description: "Open the skills list UI to view all available skills and manage their invocation settings.",
+    },
+    async () => {
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: "Please open the skills display UI using the skill-display tool so I can view and manage my skills.",
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  // 3. Register /skill-config prompt (opens config UI)
+  const skillConfigPrompt = server.registerPrompt(
+    "skill-config",
+    {
+      title: "Configure Skills",
+      description: "Open the skills configuration UI to manage skill directories and GitHub sources.",
+    },
+    async () => {
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: "Please open the skills configuration UI using the skill-config tool so I can manage my skill directories.",
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  // 4. Register per-skill prompts (no arguments needed)
   // Returns embedded resource with skill:// URI (MCP-idiomatic)
   // Only register prompts for user-invocable skills (excludes user-invocable: false)
   const perSkillPrompts = new Map<string, RegisteredPrompt>();
@@ -184,7 +231,7 @@ export function registerSkillPrompts(
     perSkillPrompts.set(name, prompt);
   }
 
-  return { skillPrompt, perSkillPrompts };
+  return { skillPrompt, perSkillPrompts, disabledPrompts: new Map(), skillsPrompt, skillConfigPrompt };
 }
 
 /**
@@ -218,6 +265,8 @@ export function refreshPrompts(
   for (const [name, prompt] of registry.perSkillPrompts) {
     if (!userInvocableNames.has(name)) {
       prompt.update({ enabled: false });
+      // Move to disabled map so we can re-enable later if needed
+      registry.disabledPrompts.set(name, prompt);
       registry.perSkillPrompts.delete(name);
     }
   }
@@ -230,6 +279,12 @@ export function refreshPrompts(
       registry.perSkillPrompts.get(name)!.update({
         description: skill.description,
       });
+    } else if (registry.disabledPrompts.has(name)) {
+      // Re-enable previously disabled prompt
+      const prompt = registry.disabledPrompts.get(name)!;
+      prompt.update({ enabled: true, description: skill.description });
+      registry.perSkillPrompts.set(name, prompt);
+      registry.disabledPrompts.delete(name);
     } else {
       // Register new skill prompt with embedded resource
       const skillPath = skill.path;

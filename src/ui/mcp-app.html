@@ -18,6 +18,10 @@
     </button>
   </div>
 
+  <div class="hint-banner">
+    <strong>Tip:</strong> Ask Claude to "show my skills" to view your skills list and manage invocation settings.
+  </div>
+
   <div class="override-banner" id="override-banner">
     <strong>Note:</strong> Directories are being set by <span id="override-source">CLI args</span>.
     Changes to the config file won't take effect while this override is active.
@@ -60,6 +64,24 @@
     </div>
   </div>
 
+  <!-- Confirm Remove Org Modal -->
+  <div class="modal-overlay" id="confirm-remove-org-modal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>Remove Allowed Org</h2>
+        <button class="modal-close" id="confirm-remove-org-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Remove this organization from the allowed list?</p>
+        <p class="confirm-path" id="confirm-remove-org-name"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="confirm-remove-org-cancel">Cancel</button>
+        <button class="btn btn-danger" id="confirm-remove-org-btn">Remove</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Org Modal -->
   <div class="modal-overlay" id="add-org-modal">
     <div class="modal">
@@ -87,23 +109,42 @@
     </div>
   </div>
 
+  <!-- Confirm Remove Modal -->
+  <div class="modal-overlay" id="confirm-remove-modal">
+    <div class="modal modal-small">
+      <div class="modal-header">
+        <h2>Remove Directory</h2>
+        <button class="modal-close" id="confirm-remove-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Remove this directory from configuration?</p>
+        <p class="confirm-path" id="confirm-remove-path"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="confirm-remove-cancel">Cancel</button>
+        <button class="btn btn-danger" id="confirm-remove-btn">Remove</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Directory Modal -->
   <div class="modal-overlay" id="add-modal">
     <div class="modal">
       <div class="modal-header">
-        <h2>Add Skills Directory</h2>
+        <h2>Add Skills Source</h2>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="directory-path">Directory Path</label>
+          <label for="directory-path">Directory Path or GitHub URL</label>
           <input
             type="text"
             id="directory-path"
-            placeholder="/path/to/skills"
+            placeholder="/path/to/skills or github.com/org/repo"
           >
           <div class="form-hint">
-            Absolute path to a directory containing skill folders (each with a SKILL.md file)
+            Local path or GitHub URL to a directory containing skill folders (each with a SKILL.md file).
+            <br>Examples: <code>C:\skills</code>, <code>github.com/org/repo</code>, <code>github.com/org/repo/subdir</code>
           </div>
         </div>
       </div>

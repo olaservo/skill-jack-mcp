@@ -59,6 +59,24 @@ const addOrgSubmitBtn = document.getElementById("add-org-submit-btn") as HTMLBut
 // Static mode DOM element
 const staticModeToggle = document.getElementById("static-mode-toggle") as HTMLInputElement;
 
+// Confirm remove modal DOM elements
+const confirmRemoveModal = document.getElementById("confirm-remove-modal")!;
+const confirmRemovePath = document.getElementById("confirm-remove-path")!;
+const confirmRemoveBtn = document.getElementById("confirm-remove-btn") as HTMLButtonElement;
+const confirmRemoveCancel = document.getElementById("confirm-remove-cancel") as HTMLButtonElement;
+const confirmRemoveClose = document.getElementById("confirm-remove-close") as HTMLButtonElement;
+
+// Track pending removal
+let pendingRemovePath: string | null = null;
+let pendingRemoveOrg: string | null = null;
+
+// Confirm remove org modal DOM elements
+const confirmRemoveOrgModal = document.getElementById("confirm-remove-org-modal")!;
+const confirmRemoveOrgName = document.getElementById("confirm-remove-org-name")!;
+const confirmRemoveOrgBtn = document.getElementById("confirm-remove-org-btn") as HTMLButtonElement;
+const confirmRemoveOrgCancel = document.getElementById("confirm-remove-org-cancel") as HTMLButtonElement;
+const confirmRemoveOrgClose = document.getElementById("confirm-remove-org-close") as HTMLButtonElement;
+
 // Handle host context changes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handleHostContextChanged(ctx: any) {
@@ -177,7 +195,7 @@ function renderDirectories() {
     btn.addEventListener("click", () => {
       const path = (btn as HTMLButtonElement).dataset.path;
       if (path) {
-        removeDirectory(path);
+        showConfirmRemoveModal(path);
       }
     });
   });
@@ -275,12 +293,21 @@ async function addDirectory() {
   }
 }
 
-// Remove directory
-async function removeDirectory(path: string) {
-  if (!confirm(`Remove "${path}" from configuration?`)) {
-    return;
-  }
+// Show confirmation modal for removing a directory
+function showConfirmRemoveModal(path: string) {
+  pendingRemovePath = path;
+  confirmRemovePath.textContent = path;
+  confirmRemoveModal.classList.add("active");
+}
 
+// Hide confirmation modal
+function closeConfirmRemoveModal() {
+  confirmRemoveModal.classList.remove("active");
+  pendingRemovePath = null;
+}
+
+// Remove directory (called after confirmation)
+async function removeDirectory(path: string) {
   try {
     const result = await app!.callServerTool({
       name: "skill-config-remove-directory",
@@ -327,7 +354,7 @@ function renderAllowedOrgs() {
     btn.addEventListener("click", () => {
       const org = (btn as HTMLButtonElement).dataset.org;
       if (org) {
-        removeAllowedOrg(org);
+        showConfirmRemoveOrgModal(org);
       }
     });
   });
@@ -352,11 +379,9 @@ async function addAllowedOrg() {
 
     console.log("Add org result:", result);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const structured = result.structuredContent as any;
+    const structured = result.structuredContent as unknown as ConfigState;
     if (structured?.success) {
-      allowedOrgs = structured.allowedOrgs || [];
-      renderAllowedOrgs();
+      updateState(structured);
       closeOrgModal();
       showToast(`Added allowed org: ${org}`, "success");
     } else {
@@ -371,12 +396,21 @@ async function addAllowedOrg() {
   }
 }
 
-// Remove allowed org
-async function removeAllowedOrg(org: string) {
-  if (!confirm(`Remove "${org}" from allowed orgs?`)) {
-    return;
-  }
+// Show confirmation modal for removing an allowed org
+function showConfirmRemoveOrgModal(org: string) {
+  pendingRemoveOrg = org;
+  confirmRemoveOrgName.textContent = org;
+  confirmRemoveOrgModal.classList.add("active");
+}
 
+// Hide confirmation modal for org removal
+function closeConfirmRemoveOrgModal() {
+  confirmRemoveOrgModal.classList.remove("active");
+  pendingRemoveOrg = null;
+}
+
+// Remove allowed org (called after confirmation)
+async function removeAllowedOrg(org: string) {
   try {
     const result = await app!.callServerTool({
       name: "skill-config-remove-allowed-org",
@@ -385,11 +419,9 @@ async function removeAllowedOrg(org: string) {
 
     console.log("Remove org result:", result);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const structured = result.structuredContent as any;
+    const structured = result.structuredContent as unknown as ConfigState;
     if (structured?.success) {
-      allowedOrgs = structured.allowedOrgs || [];
-      renderAllowedOrgs();
+      updateState(structured);
       showToast(`Removed allowed org: ${org}`, "success");
     } else {
       showToast(structured?.error || "Failed to remove org", "error");
@@ -453,6 +485,28 @@ directoryInput.addEventListener("keydown", (e) => {
     addDirectory();
   }
 });
+
+// Confirm remove modal event listeners
+confirmRemoveBtn.addEventListener("click", async () => {
+  if (pendingRemovePath) {
+    const path = pendingRemovePath;
+    closeConfirmRemoveModal();
+    await removeDirectory(path);
+  }
+});
+confirmRemoveCancel.addEventListener("click", closeConfirmRemoveModal);
+confirmRemoveClose.addEventListener("click", closeConfirmRemoveModal);
+
+// Confirm remove org modal event listeners
+confirmRemoveOrgBtn.addEventListener("click", async () => {
+  if (pendingRemoveOrg) {
+    const org = pendingRemoveOrg;
+    closeConfirmRemoveOrgModal();
+    await removeAllowedOrg(org);
+  }
+});
+confirmRemoveOrgCancel.addEventListener("click", closeConfirmRemoveOrgModal);
+confirmRemoveOrgClose.addEventListener("click", closeConfirmRemoveOrgModal);
 
 // Org modal event listeners
 addOrgBtn.addEventListener("click", showOrgModal);

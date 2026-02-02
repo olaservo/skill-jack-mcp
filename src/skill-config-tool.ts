@@ -79,9 +79,9 @@ const RemoveDirectoryInputSchema = {
 };
 
 /**
- * Callback type for when directories change.
+ * Callback type for when directories or GitHub settings change.
  */
-export type OnDirectoriesChangedCallback = () => void;
+export type OnDirectoriesChangedCallback = () => void | Promise<void>;
 
 /**
  * Register skill-config MCP App tools and resource.
@@ -248,6 +248,9 @@ export function registerSkillConfigTool(
             directories,
             activeSource: getConfigState().activeSource,
             isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
+            allowedOrgs: getGitHubAllowedOrgs(),
+            allowedUsers: getGitHubAllowedUsers(),
           },
         };
       } catch (error) {
@@ -324,6 +327,9 @@ export function registerSkillConfigTool(
             directories,
             activeSource: getConfigState().activeSource,
             isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
+            allowedOrgs: getGitHubAllowedOrgs(),
+            allowedUsers: getGitHubAllowedUsers(),
           },
         };
       } catch (error) {
@@ -378,8 +384,10 @@ export function registerSkillConfigTool(
 
       try {
         addGitHubAllowedOrg(org);
-        const allowedOrgs = getGitHubAllowedOrgs();
+        onDirectoriesChanged(); // Trigger GitHub resync
 
+        // Return full state so UI can update directories' allowed status
+        const directories = getDirectoriesWithCounts();
         return {
           content: [
             {
@@ -389,7 +397,12 @@ export function registerSkillConfigTool(
           ],
           structuredContent: {
             success: true,
-            allowedOrgs,
+            directories,
+            activeSource: getConfigState().activeSource,
+            isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
+            allowedOrgs: getGitHubAllowedOrgs(),
+            allowedUsers: getGitHubAllowedUsers(),
           },
         };
       } catch (error) {
@@ -445,8 +458,10 @@ export function registerSkillConfigTool(
 
       try {
         removeGitHubAllowedOrg(org);
-        const allowedOrgs = getGitHubAllowedOrgs();
+        onDirectoriesChanged(); // Trigger GitHub resync
 
+        // Return full state so UI can update directories' allowed status
+        const directories = getDirectoriesWithCounts();
         return {
           content: [
             {
@@ -456,7 +471,12 @@ export function registerSkillConfigTool(
           ],
           structuredContent: {
             success: true,
-            allowedOrgs,
+            directories,
+            activeSource: getConfigState().activeSource,
+            isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
+            allowedOrgs: getGitHubAllowedOrgs(),
+            allowedUsers: getGitHubAllowedUsers(),
           },
         };
       } catch (error) {
