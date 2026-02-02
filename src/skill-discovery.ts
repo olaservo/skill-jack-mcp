@@ -10,6 +10,25 @@ import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 /**
+ * Source information for a skill.
+ * Indicates whether the skill comes from a local directory or GitHub repository.
+ */
+export interface SkillSource {
+  type: "local" | "github";
+  displayName: string; // "Local" or "owner/repo"
+  owner?: string; // GitHub org/user (only for github type)
+  repo?: string; // GitHub repo name (only for github type)
+}
+
+/**
+ * Default source for skills discovered without explicit source info.
+ */
+export const DEFAULT_SKILL_SOURCE: SkillSource = {
+  type: "local",
+  displayName: "Local",
+};
+
+/**
  * Metadata extracted from a skill's SKILL.md frontmatter.
  */
 export interface SkillMetadata {
@@ -18,6 +37,13 @@ export interface SkillMetadata {
   path: string; // Full path to SKILL.md
   disableModelInvocation?: boolean; // When true, exclude from tool description
   userInvocable?: boolean; // When false, exclude from prompts (default: true)
+  // Computed effective values (after config overrides applied)
+  effectiveAssistantInvocable: boolean; // True if model can auto-invoke
+  effectiveUserInvocable: boolean; // True if appears in prompts menu
+  isAssistantOverridden: boolean; // True if config override exists
+  isUserOverridden: boolean; // True if config override exists
+  // Source information
+  source: SkillSource; // Where this skill came from (local or GitHub)
 }
 
 /**
@@ -62,8 +88,11 @@ function parseFrontmatter(content: string): { metadata: Record<string, unknown>;
 /**
  * Discover all skills in a directory.
  * Scans for subdirectories containing SKILL.md files.
+ *
+ * @param skillsDir - The directory to scan for skills
+ * @param source - Optional source info to attach to discovered skills
  */
-export function discoverSkills(skillsDir: string): SkillMetadata[] {
+export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMetadata[] {
   const skills: SkillMetadata[] = [];
 
   if (!fs.existsSync(skillsDir)) {
@@ -99,12 +128,21 @@ export function discoverSkills(skillsDir: string): SkillMetadata[] {
         continue;
       }
 
+      const effectiveAssistant = disableModelInvocation !== true;
+      const effectiveUser = userInvocable !== false;
       skills.push({
         name: name.trim(),
         description: description.trim(),
         path: skillMdPath,
         disableModelInvocation: disableModelInvocation === true,
         userInvocable: userInvocable !== false, // Default to true
+        // Initialize effective values from frontmatter (overrides applied later)
+        effectiveAssistantInvocable: effectiveAssistant,
+        effectiveUserInvocable: effectiveUser,
+        isAssistantOverridden: false,
+        isUserOverridden: false,
+        // Source info (local or GitHub)
+        source: source || DEFAULT_SKILL_SOURCE,
       });
     } catch (error) {
       console.error(`Failed to parse skill at ${skillDir}:`, error);
@@ -184,17 +222,56 @@ export function createSkillMap(skills: SkillMetadata[]): Map<string, SkillMetada
 }
 
 /**
+ * Invocation override settings per skill (imported type reference).
+ */
+interface SkillInvocationOverrides {
+  assistant?: boolean;
+  user?: boolean;
+}
+
+/**
+ * Apply invocation overrides from config to compute effective values.
+ * Returns a new array with updated effective* fields.
+ */
+export function applyInvocationOverrides(
+  skills: SkillMetadata[],
+  overrides: Record<string, SkillInvocationOverrides>
+): SkillMetadata[] {
+  return skills.map((skill) => {
+    const override = overrides[skill.name];
+    if (!override) {
+      return skill; // No override, keep frontmatter defaults
+    }
+
+    const hasAssistantOverride = override.assistant !== undefined;
+    const hasUserOverride = override.user !== undefined;
+
+    return {
+      ...skill,
+      effectiveAssistantInvocable: hasAssistantOverride
+        ? override.assistant!
+        : !skill.disableModelInvocation,
+      effectiveUserInvocable: hasUserOverride
+        ? override.user!
+        : skill.userInvocable !== false,
+      isAssistantOverridden: hasAssistantOverride,
+      isUserOverridden: hasUserOverride,
+    };
+  });
+}
+
+/**
  * Filter skills that can be invoked by the model (appear in tool description).
- * Excludes skills with disable-model-invocation: true in frontmatter.
+ * Uses effective value which considers config overrides.
  */
 export function getModelInvocableSkills(skills: SkillMetadata[]): SkillMetadata[] {
-  return skills.filter((skill) => !skill.disableModelInvocation);
+  return skills.filter((skill) => skill.effectiveAssistantInvocable);
 }
 
 /**
  * Filter skills that can be invoked by the user (appear in prompts menu).
- * Excludes skills with user-invocable: false in frontmatter.
+ * Uses effective value which considers config overrides.
  */
 export function getUserInvocableSkills(skills: SkillMetadata[]): SkillMetadata[] {
-  return skills.filter((skill) => skill.userInvocable !== false);
+  return skills.filter((skill) => skill.effectiveUserInvocable);
 }

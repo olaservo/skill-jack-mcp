@@ -21,6 +21,8 @@ interface ConfigState {
   activeSource: string;
   isOverridden: boolean;
   staticMode?: boolean;
+  allowedOrgs?: string[];
+  allowedUsers?: string[];
   success?: boolean;
   error?: string;
 }
@@ -30,6 +32,8 @@ let directories: DirectoryInfo[] = [];
 let activeSource = "config";
 let isOverridden = false;
 let staticMode = false;
+let allowedOrgs: string[] = [];
+let allowedUsers: string[] = [];
 let app: App | null = null;
 
 // DOM Elements
@@ -42,6 +46,15 @@ const overrideSource = document.getElementById("override-source")!;
 const toast = document.getElementById("toast")!;
 const directoryInput = document.getElementById("directory-path") as HTMLInputElement;
 const addSubmitBtn = document.getElementById("add-submit-btn") as HTMLButtonElement;
+
+// Allowed orgs DOM elements
+const allowedOrgsList = document.getElementById("allowed-orgs-list")!;
+const addOrgBtn = document.getElementById("add-org-btn") as HTMLButtonElement;
+const addOrgModal = document.getElementById("add-org-modal")!;
+const orgNameInput = document.getElementById("org-name") as HTMLInputElement;
+const addOrgSubmitBtn = document.getElementById("add-org-submit-btn") as HTMLButtonElement;
+
+// Static mode DOM element
 const staticModeToggle = document.getElementById("static-mode-toggle") as HTMLInputElement;
 
 // Handle host context changes
@@ -80,6 +93,12 @@ function updateState(data: ConfigState) {
   if (data.staticMode !== undefined) {
     staticMode = data.staticMode;
   }
+  if (data.allowedOrgs) {
+    allowedOrgs = data.allowedOrgs;
+  }
+  if (data.allowedUsers) {
+    allowedUsers = data.allowedUsers;
+  }
 
   render();
 }
@@ -89,6 +108,7 @@ function render() {
   renderStats();
   renderOverrideBanner();
   renderDirectories();
+  renderAllowedOrgs();
   updateAddButton();
   renderStaticModeToggle();
 }
@@ -275,6 +295,115 @@ async function removeDirectory(path: string) {
   }
 }
 
+// Render allowed orgs list
+function renderAllowedOrgs() {
+  if (allowedOrgs.length === 0) {
+    allowedOrgsList.innerHTML = `
+      <div class="empty-state small">
+        No allowed orgs configured. All GitHub orgs/users are allowed by default.
+      </div>
+    `;
+    return;
+  }
+
+  allowedOrgsList.innerHTML = allowedOrgs
+    .map((org) => `
+      <div class="allowed-item">
+        <span class="allowed-name">${escapeHtml(org)}</span>
+        <button class="remove-org-btn" data-org="${escapeHtml(org)}">Remove</button>
+      </div>
+    `)
+    .join("");
+
+  // Add click handlers for remove buttons
+  allowedOrgsList.querySelectorAll(".remove-org-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const org = (btn as HTMLButtonElement).dataset.org;
+      if (org) {
+        removeAllowedOrg(org);
+      }
+    });
+  });
+}
+
+// Add allowed org
+async function addAllowedOrg() {
+  const org = orgNameInput.value.trim();
+  if (!org) {
+    showToast("Please enter an organization name", "error");
+    return;
+  }
+
+  addOrgSubmitBtn.disabled = true;
+  addOrgSubmitBtn.textContent = "Adding...";
+
+  try {
+    const result = await app!.callServerTool({
+      name: "skill-config-add-allowed-org",
+      arguments: { org },
+    });
+
+    console.log("Add org result:", result);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const structured = result.structuredContent as any;
+    if (structured?.success) {
+      allowedOrgs = structured.allowedOrgs || [];
+      renderAllowedOrgs();
+      closeOrgModal();
+      showToast(`Added allowed org: ${org}`, "success");
+    } else {
+      showToast(structured?.error || "Failed to add org", "error");
+    }
+  } catch (error) {
+    console.error("Add org error:", error);
+    showToast((error as Error).message || "Failed to add org", "error");
+  } finally {
+    addOrgSubmitBtn.disabled = false;
+    addOrgSubmitBtn.textContent = "Add Org";
+  }
+}
+
+// Remove allowed org
+async function removeAllowedOrg(org: string) {
+  if (!confirm(`Remove "${org}" from allowed orgs?`)) {
+    return;
+  }
+
+  try {
+    const result = await app!.callServerTool({
+      name: "skill-config-remove-allowed-org",
+      arguments: { org },
+    });
+
+    console.log("Remove org result:", result);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const structured = result.structuredContent as any;
+    if (structured?.success) {
+      allowedOrgs = structured.allowedOrgs || [];
+      renderAllowedOrgs();
+      showToast(`Removed allowed org: ${org}`, "success");
+    } else {
+      showToast(structured?.error || "Failed to remove org", "error");
+    }
+  } catch (error) {
+    console.error("Remove org error:", error);
+    showToast((error as Error).message || "Failed to remove org", "error");
+  }
+}
+
+// Org modal functions
+function showOrgModal() {
+  orgNameInput.value = "";
+  addOrgModal.classList.add("active");
+  orgNameInput.focus();
+}
+
+function closeOrgModal() {
+  addOrgModal.classList.remove("active");
+}
+
 // Modal functions
 function showAddModal() {
   if (isOverridden) {
@@ -309,14 +438,27 @@ function escapeHtml(str: string): string {
 
 // Set up event listeners
 addBtn.addEventListener("click", showAddModal);
-document.querySelector(".modal-close")?.addEventListener("click", closeAddModal);
-document.querySelector(".btn-secondary")?.addEventListener("click", closeAddModal);
+addModal.querySelector(".modal-close")?.addEventListener("click", closeAddModal);
+addModal.querySelector(".btn-secondary")?.addEventListener("click", closeAddModal);
 addSubmitBtn.addEventListener("click", addDirectory);
 directoryInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     addDirectory();
   }
 });
+
+// Org modal event listeners
+addOrgBtn.addEventListener("click", showOrgModal);
+addOrgModal.querySelector(".modal-close")?.addEventListener("click", closeOrgModal);
+addOrgModal.querySelector(".btn-secondary")?.addEventListener("click", closeOrgModal);
+addOrgSubmitBtn.addEventListener("click", addAllowedOrg);
+orgNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    addAllowedOrg();
+  }
+});
+
+// Static mode toggle event listener
 staticModeToggle?.addEventListener("change", (e) => {
   const enabled = (e.target as HTMLInputElement).checked;
   setStaticModeEnabled(enabled);

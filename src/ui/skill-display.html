@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Available Skills</title>
+  <link rel="stylesheet" href="./skill-display.css">
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Available Skills</h1>
+      <div class="stats" id="stats">Loading...</div>
+    </div>
+  </div>
+
+  <div class="search-bar">
+    <input
+      type="text"
+      id="search-input"
+      placeholder="Search skills..."
+    >
+  </div>
+
+  <div id="skill-list" class="skill-list">
+    <div class="loading">Loading skills...</div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="./skill-display.ts"></script>
+</body>
+</html>

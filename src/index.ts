@@ -6,12 +6,13 @@
  * Provides global skills with tools for progressive disclosure.
  *
  * Usage:
- *   skilljack-mcp /path/to/skills [/path2 ...]   # One or more directories
- *   skilljack-mcp --static /path/to/skills       # Static mode (no file watching)
- *   SKILLS_DIR=/path/to/skills skilljack-mcp    # Single directory via env
- *   SKILLS_DIR=/path1,/path2 skilljack-mcp      # Multiple (comma-separated)
- *   SKILLJACK_STATIC=true skilljack-mcp         # Static mode via env
- *   (or configure via the skill-config UI)
+ *   skilljack-mcp /path/to/skills [/path2 ...]           # Local directories
+ *   skilljack-mcp --static /path/to/skills               # Static mode (no file watching)
+ *   skilljack-mcp github.com/owner/repo                  # GitHub repository
+ *   skilljack-mcp /local github.com/owner/repo           # Mixed local + GitHub
+ *   SKILLS_DIR=/path,github.com/owner/repo skilljack-mcp # Via environment
+ *   SKILLJACK_STATIC=true skilljack-mcp                  # Static mode via env
+ *   (or configure local directories via the skill-config UI)
  *
  * Options:
  *   --static  Freeze skills list at startup. Disables file watching and
@@ -24,7 +25,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import chokidar from "chokidar";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { discoverSkills, createSkillMap } from "./skill-discovery.js";
+import { discoverSkills, createSkillMap, applyInvocationOverrides, SkillSource, DEFAULT_SKILL_SOURCE } from "./skill-discovery.js";
 import { registerSkillTool, getToolDescription, SkillState } from "./skill-tool.js";
 import { registerSkillResources } from "./skill-resources.js";
 import { registerSkillPrompts, refreshPrompts, PromptRegistry } from "./skill-prompts.js";
@@ -34,8 +35,19 @@ import {
   refreshSubscriptions,
   SubscriptionManager,
 } from "./subscriptions.js";
-import { getActiveDirectories, getStaticModeFromConfig } from "./skill-config.js";
+import { getActiveDirectories, getSkillInvocationOverrides, getStaticModeFromConfig } from "./skill-config.js";
 import { registerSkillConfigTool } from "./skill-config-tool.js";
+import { registerSkillDisplayTool } from "./skill-display-tool.js";
+import {
+  isGitHubUrl,
+  parseGitHubUrl,
+  isRepoAllowed,
+  getGitHubConfig,
+  GitHubRepoSpec,
+  getRepoCachePath,
+} from "./github-config.js";
+import { syncAllRepos, SyncOptions } from "./github-sync.js";
+import { createPollingManager, PollingManager } from "./github-polling.js";
 
 /**
  * Subdirectories to check for skills within the configured directory.
@@ -43,9 +55,76 @@ import { registerSkillConfigTool } from "./skill-config-tool.js";
 const SKILL_SUBDIRS = [".claude/skills", "skills"];
 
 /**
+ * Map from directory path to its source information.
+ * Used to tag discovered skills with their origin.
+ */
+interface DirectorySourceMap {
+  [dirPath: string]: SkillSource;
+}
+
+/**
+ * Build a directory-to-source map from current configuration.
+ * Maps both main directories and their standard subdirectories.
+ *
+ * @param localDirs - Local skill directories
+ * @param githubSpecs - GitHub repository specifications
+ * @param cacheDir - GitHub cache directory path
+ */
+function buildDirectorySourceMap(
+  localDirs: string[],
+  githubSpecs: GitHubRepoSpec[],
+  cacheDir: string
+): DirectorySourceMap {
+  const map: DirectorySourceMap = {};
+
+  // Map local directories
+  for (const dir of localDirs) {
+    const source: SkillSource = {
+      type: "local",
+      displayName: "Local",
+    };
+    map[dir] = source;
+    // Also map standard subdirectories
+    for (const subdir of SKILL_SUBDIRS) {
+      map[path.join(dir, subdir)] = source;
+    }
+  }
+
+  // Map GitHub cache directories
+  for (const spec of githubSpecs) {
+    const cachePath = getRepoCachePath(spec, cacheDir);
+    const source: SkillSource = {
+      type: "github",
+      displayName: `${spec.owner}/${spec.repo}`,
+      owner: spec.owner,
+      repo: spec.repo,
+    };
+    map[cachePath] = source;
+    // Also map standard subdirectories
+    for (const subdir of SKILL_SUBDIRS) {
+      map[path.join(cachePath, subdir)] = source;
+    }
+  }
+
+  return map;
+}
+
+/**
  * Current skill directories (mutable to support UI-driven changes).
+ * This includes both local directories and GitHub cache directories.
  */
 let currentSkillsDirs: string[] = [];
+
+/**
+ * GitHub specs that are currently being polled.
+ */
+let currentGithubSpecs: GitHubRepoSpec[] = [];
+
+/**
+ * Current directory-to-source map for skill discovery.
+ * Maps directory paths to their source info (local or GitHub).
+ */
+let currentSourceMap: DirectorySourceMap = {};
 
 /**
  * Check if static mode is enabled.
@@ -71,6 +150,48 @@ function getStaticMode(): boolean {
 }
 
 /**
+ * Classify paths as local directories or GitHub repositories.
+ * GitHub URLs are detected by checking for "github.com" in the path.
+ */
+function classifyPaths(paths: string[]): {
+  localDirs: string[];
+  githubSpecs: GitHubRepoSpec[];
+} {
+  const localDirs: string[] = [];
+  const githubSpecs: GitHubRepoSpec[] = [];
+
+  for (const p of paths) {
+    if (isGitHubUrl(p)) {
+      try {
+        const spec = parseGitHubUrl(p);
+        githubSpecs.push(spec);
+      } catch (error) {
+        console.error(`Warning: Invalid GitHub URL "${p}": ${error}`);
+      }
+    } else {
+      // Local directory - resolve the path
+      localDirs.push(path.resolve(p));
+    }
+  }
+
+  // Deduplicate local dirs
+  const uniqueLocalDirs = [...new Set(localDirs)];
+
+  // Deduplicate GitHub specs by owner/repo
+  const seenRepos = new Set<string>();
+  const uniqueGithubSpecs = githubSpecs.filter((spec) => {
+    const key = `${spec.owner}/${spec.repo}`;
+    if (seenRepos.has(key)) {
+      return false;
+    }
+    seenRepos.add(key);
+    return true;
+  });
+
+  return { localDirs: uniqueLocalDirs, githubSpecs: uniqueGithubSpecs };
+}
+
+/**
  * Shared state for skill management.
  * Tools and resources reference this state.
  */
@@ -82,8 +203,14 @@ const skillState: SkillState = {
  * Discover skills from multiple configured directories.
  * Each directory is checked along with its standard subdirectories.
  * Handles duplicate skill names by keeping first occurrence.
+ *
+ * @param skillsDirs - The skill directories to scan
+ * @param sourceMap - Map from directory paths to source info
  */
-function discoverSkillsFromDirs(skillsDirs: string[]): ReturnType<typeof discoverSkills> {
+function discoverSkillsFromDirs(
+  skillsDirs: string[],
+  sourceMap: DirectorySourceMap
+): ReturnType<typeof discoverSkills> {
   const allSkills: ReturnType<typeof discoverSkills> = [];
   const seenNames = new Map<string, string>(); // name -> source directory
 
@@ -95,14 +222,19 @@ function discoverSkillsFromDirs(skillsDirs: string[]): ReturnType<typeof discove
 
     console.error(`Scanning skills directory: ${skillsDir}`);
 
+    // Get source info for this directory (default to local if not in map)
+    const dirSource = sourceMap[skillsDir] || DEFAULT_SKILL_SOURCE;
+
     // Check if the directory itself contains skills
-    const dirSkills = discoverSkills(skillsDir);
+    const dirSkills = discoverSkills(skillsDir, dirSource);
 
     // Also check standard subdirectories
     for (const subdir of SKILL_SUBDIRS) {
       const subPath = path.join(skillsDir, subdir);
       if (fs.existsSync(subPath)) {
-        dirSkills.push(...discoverSkills(subPath));
+        // Use subpath source if available, otherwise inherit from parent
+        const subSource = sourceMap[subPath] || dirSource;
+        dirSkills.push(...discoverSkills(subPath, subSource));
       }
     }
 
@@ -148,9 +280,13 @@ function refreshSkills(
 ): void {
   console.error("Refreshing skills...");
 
-  // Re-discover all skills
-  const skills = discoverSkillsFromDirs(skillsDirs);
+  // Re-discover all skills using current source map
+  let skills = discoverSkillsFromDirs(skillsDirs, currentSourceMap);
   const oldCount = skillState.skillMap.size;
+
+  // Apply invocation overrides from config
+  const overrides = getSkillInvocationOverrides();
+  skills = applyInvocationOverrides(skills, overrides);
 
   // Update shared state
   skillState.skillMap = createSkillMap(skills);
@@ -289,18 +425,79 @@ function watchSkillDirectories(
 const subscriptionManager = createSubscriptionManager();
 
 async function main() {
-  // Get skill directories from CLI args, env var, or config file
-  currentSkillsDirs = getActiveDirectories();
+  // Check if static mode is enabled
   const isStatic = getStaticMode();
+
+  // Get skill directories from CLI args, env var, or config file
+  // This returns paths that may include GitHub URLs
+  const allPaths = getActiveDirectories();
+
+  // Classify paths as local or GitHub
+  const { localDirs, githubSpecs } = classifyPaths(allPaths);
+
+  // Get GitHub configuration
+  const githubConfig = getGitHubConfig();
+
+  // Sync GitHub repositories
+  let githubDirs: string[] = [];
+
+  if (githubSpecs.length > 0) {
+    console.error(`GitHub repos: ${githubSpecs.map((s) => `${s.owner}/${s.repo}`).join(", ")}`);
+
+    // Filter by allowlist
+    for (const spec of githubSpecs) {
+      if (!isRepoAllowed(spec, githubConfig)) {
+        console.error(
+          `Blocked: ${spec.owner}/${spec.repo} not in allowed orgs/users. ` +
+            `Set GITHUB_ALLOWED_ORGS or GITHUB_ALLOWED_USERS to permit.`
+        );
+        continue;
+      }
+      currentGithubSpecs.push(spec);
+    }
+
+    if (currentGithubSpecs.length > 0) {
+      console.error(`Syncing ${currentGithubSpecs.length} GitHub repo(s)...`);
+
+      const syncOptions: SyncOptions = {
+        cacheDir: githubConfig.cacheDir,
+        token: githubConfig.token,
+        shallowClone: true,
+      };
+
+      const results = await syncAllRepos(currentGithubSpecs, syncOptions);
+
+      // Collect successful sync paths
+      for (const result of results) {
+        if (!result.error) {
+          githubDirs.push(result.localPath);
+        }
+      }
+
+      console.error(`Successfully synced ${githubDirs.length}/${currentGithubSpecs.length} repo(s)`);
+    }
+  }
+
+  // Combine all skill directories
+  currentSkillsDirs = [...localDirs, ...githubDirs];
+
+  // Build source map for skill discovery
+  currentSourceMap = buildDirectorySourceMap(localDirs, currentGithubSpecs, githubConfig.cacheDir);
 
   // Allow starting with no directories - user can configure via UI
   if (currentSkillsDirs.length === 0) {
     console.error("No skills directories configured.");
     console.error("You can configure directories via the skill-config tool UI,");
     console.error("or use CLI args: skilljack-mcp /path/to/skills");
+    console.error("or use GitHub: skilljack-mcp github.com/owner/repo");
     console.error("or set SKILLS_DIR environment variable.");
   } else {
-    console.error(`Skills directories: ${currentSkillsDirs.join(", ")}`);
+    if (localDirs.length > 0) {
+      console.error(`Local directories: ${localDirs.join(", ")}`);
+    }
+    if (githubDirs.length > 0) {
+      console.error(`GitHub cache directories: ${githubDirs.join(", ")}`);
+    }
   }
 
   if (isStatic) {
@@ -308,7 +505,12 @@ async function main() {
   }
 
   // Discover skills at startup
-  const skills = discoverSkillsFromDirs(currentSkillsDirs);
+  let skills = discoverSkillsFromDirs(currentSkillsDirs, currentSourceMap);
+
+  // Apply invocation overrides from config
+  const overrides = getSkillInvocationOverrides();
+  skills = applyInvocationOverrides(skills, overrides);
+
   skillState.skillMap = createSkillMap(skills);
   console.error(`Discovered ${skills.length} skill(s)`);
 
@@ -343,8 +545,21 @@ async function main() {
     registerSkillConfigTool(server, skillState, () => {
       // Callback when directories change via UI
       // Reload directories from config and refresh skills
-      currentSkillsDirs = getActiveDirectories();
+      // Note: UI only manages local directories, GitHub repos are managed via CLI/env
+      const newPaths = getActiveDirectories();
+      const { localDirs: newLocalDirs } = classifyPaths(newPaths);
+      currentSkillsDirs = [...newLocalDirs, ...githubDirs];
+      // Rebuild source map with updated local directories
+      currentSourceMap = buildDirectorySourceMap(newLocalDirs, currentGithubSpecs, githubConfig.cacheDir);
       console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
+      refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+    });
+
+    // Register skill-display tool for UI-based invocation settings
+    registerSkillDisplayTool(server, skillState, () => {
+      // Callback when invocation settings change via UI
+      // Refresh skills to apply new overrides
+      console.error("Invocation settings changed via UI. Refreshing skills...");
       refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
     });
   }
@@ -352,6 +567,29 @@ async function main() {
   // Set up file watchers for skill directory changes (skip in static mode)
   if (!isStatic && currentSkillsDirs.length > 0) {
     watchSkillDirectories(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+  }
+
+  // Set up GitHub polling for updates (skip in static mode)
+  let pollingManager: PollingManager | null = null;
+  if (!isStatic && currentGithubSpecs.length > 0 && githubConfig.pollIntervalMs > 0) {
+    const syncOptions: SyncOptions = {
+      cacheDir: githubConfig.cacheDir,
+      token: githubConfig.token,
+      shallowClone: true,
+    };
+
+    pollingManager = createPollingManager(currentGithubSpecs, syncOptions, {
+      intervalMs: githubConfig.pollIntervalMs,
+      onUpdate: (spec, result) => {
+        console.error(`GitHub update detected for ${spec.owner}/${spec.repo}`);
+        refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+      },
+      onError: (spec, error) => {
+        console.error(`GitHub polling error for ${spec.owner}/${spec.repo}: ${error.message}`);
+      },
+    });
+
+    pollingManager.start();
   }
 
   // Connect via stdio transport

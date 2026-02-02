@@ -108,6 +108,24 @@ The UI displays:
 
 Changes made through the UI are persisted to the server's configuration. Clients that support `tools/listChanged` notifications will see updates immediately; others may require reconnection.
 
+## Skill Display UI
+
+View all available skills and customize their invocation settings through the skill display UI.
+
+**To open the skill display UI**, ask your assistant:
+
+> "what skills are configured in skilljack?"
+
+The UI displays:
+- All discovered skills with name, description, and file path
+- **Source indicators** showing whether each skill is from a local directory or GitHub repository
+- **Invocation toggles** to enable/disable Assistant (model auto-invoke) and User (prompts menu) visibility
+- **Customized badge** when settings differ from frontmatter defaults
+
+![Skill Display UI](docs/images/skill-display-ui.png)
+
+Skills from GitHub repositories show the org/repo name (e.g., `modelcontextprotocol/ext-apps`), making it easy to identify where each skill originates.
+
 ## How It Works
 
 The server implements the [Agent Skills](https://agentskills.io) progressive disclosure pattern with dynamic updates:
