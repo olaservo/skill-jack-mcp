@@ -49,7 +49,11 @@ skilljack-mcp --static /path/to/skills
 
 ## Documentation
 
-For complete documentation including tools, prompts, resources, configuration options, and architecture details, invoke the `/skilljack-docs` prompt or call the `skill` tool with name `skilljack-docs`.
+For complete documentation, just ask your assistant:
+
+> "load the skilljack docs"
+
+This loads the full reference including tools, prompts, resources, configuration options, and architecture details.
 
 ## Related
 
