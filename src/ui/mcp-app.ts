@@ -59,6 +59,16 @@ const addOrgSubmitBtn = document.getElementById("add-org-submit-btn") as HTMLBut
 // Static mode DOM element
 const staticModeToggle = document.getElementById("static-mode-toggle") as HTMLInputElement;
 
+// Confirm remove modal DOM elements
+const confirmRemoveModal = document.getElementById("confirm-remove-modal")!;
+const confirmRemovePath = document.getElementById("confirm-remove-path")!;
+const confirmRemoveBtn = document.getElementById("confirm-remove-btn") as HTMLButtonElement;
+const confirmRemoveCancel = document.getElementById("confirm-remove-cancel") as HTMLButtonElement;
+const confirmRemoveClose = document.getElementById("confirm-remove-close") as HTMLButtonElement;
+
+// Track pending removal
+let pendingRemovePath: string | null = null;
+
 // Handle host context changes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handleHostContextChanged(ctx: any) {
@@ -177,7 +187,7 @@ function renderDirectories() {
     btn.addEventListener("click", () => {
       const path = (btn as HTMLButtonElement).dataset.path;
       if (path) {
-        removeDirectory(path);
+        showConfirmRemoveModal(path);
       }
     });
   });
@@ -275,12 +285,21 @@ async function addDirectory() {
   }
 }
 
-// Remove directory
-async function removeDirectory(path: string) {
-  if (!confirm(`Remove "${path}" from configuration?`)) {
-    return;
-  }
+// Show confirmation modal for removing a directory
+function showConfirmRemoveModal(path: string) {
+  pendingRemovePath = path;
+  confirmRemovePath.textContent = path;
+  confirmRemoveModal.classList.add("active");
+}
 
+// Hide confirmation modal
+function closeConfirmRemoveModal() {
+  confirmRemoveModal.classList.remove("active");
+  pendingRemovePath = null;
+}
+
+// Remove directory (called after confirmation)
+async function removeDirectory(path: string) {
   try {
     const result = await app!.callServerTool({
       name: "skill-config-remove-directory",
@@ -453,6 +472,17 @@ directoryInput.addEventListener("keydown", (e) => {
     addDirectory();
   }
 });
+
+// Confirm remove modal event listeners
+confirmRemoveBtn.addEventListener("click", async () => {
+  if (pendingRemovePath) {
+    const path = pendingRemovePath;
+    closeConfirmRemoveModal();
+    await removeDirectory(path);
+  }
+});
+confirmRemoveCancel.addEventListener("click", closeConfirmRemoveModal);
+confirmRemoveClose.addEventListener("click", closeConfirmRemoveModal);
 
 // Org modal event listeners
 addOrgBtn.addEventListener("click", showOrgModal);

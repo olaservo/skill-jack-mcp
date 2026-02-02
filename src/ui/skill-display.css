@@ -58,6 +58,30 @@ h1 {
   margin-top: 4px;
 }
 
+/* Hint banner */
+.hint-banner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.hint-banner strong {
+  color: var(--text);
+}
+
+.hint-banner code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--accent);
+}
+
 /* Search bar */
 .search-bar {
   margin-bottom: 16px;

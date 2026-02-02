@@ -248,6 +248,9 @@ export function registerSkillConfigTool(
             directories,
             activeSource: getConfigState().activeSource,
             isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
+            allowedOrgs: getGitHubAllowedOrgs(),
+            allowedUsers: getGitHubAllowedUsers(),
           },
         };
       } catch (error) {
@@ -324,6 +327,9 @@ export function registerSkillConfigTool(
             directories,
             activeSource: getConfigState().activeSource,
             isOverridden: getConfigState().isOverridden,
+            staticMode: getStaticModeFromConfig(),
+            allowedOrgs: getGitHubAllowedOrgs(),
+            allowedUsers: getGitHubAllowedUsers(),
           },
         };
       } catch (error) {
