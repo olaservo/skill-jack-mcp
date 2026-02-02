@@ -12,7 +12,9 @@ import {
 interface DirectoryInfo {
   path: string;
   source: "cli" | "env" | "config";
+  type: "local" | "github";
   valid: boolean;
+  allowed: boolean;
   skillCount?: number;
 }
 
@@ -146,14 +148,19 @@ function renderDirectories() {
   directoryList.innerHTML = directories
     .map((dir) => {
       const isReadOnly = dir.source !== "config";
+      const isBlocked = dir.type === "github" && !dir.allowed;
       return `
-      <div class="directory-card ${isReadOnly ? "readonly" : ""}">
+      <div class="directory-card ${isReadOnly ? "readonly" : ""} ${isBlocked ? "blocked" : ""}">
         ${isReadOnly ? `<span class="lock-icon" title="Read-only: configured via ${dir.source.toUpperCase()}">&#128274;</span>` : ""}
         <div class="directory-info">
           <div class="directory-path">${escapeHtml(dir.path)}</div>
           <div class="directory-meta">
             <span class="source-badge ${dir.source}">${dir.source.toUpperCase()}</span>
-            <span class="skill-count">${dir.skillCount} skill${dir.skillCount !== 1 ? "s" : ""}</span>
+            <span class="type-badge ${dir.type}">${dir.type.toUpperCase()}</span>
+            ${isBlocked
+              ? `<span class="blocked-badge" title="Add org/user to allowed list to sync">BLOCKED</span>`
+              : `<span class="skill-count">${dir.skillCount} skill${dir.skillCount !== 1 ? "s" : ""}</span>`
+            }
             <span class="validity-icon ${dir.valid ? "valid" : "invalid"}" title="${dir.valid ? "Directory exists" : "Directory not found"}">
               ${dir.valid ? "&#10003;" : "&#10007;"}
             </span>
@@ -300,7 +307,7 @@ function renderAllowedOrgs() {
   if (allowedOrgs.length === 0) {
     allowedOrgsList.innerHTML = `
       <div class="empty-state small">
-        No allowed orgs configured. All GitHub orgs/users are allowed by default.
+        No allowed orgs configured. GitHub repos are blocked until an org/user is added.
       </div>
     `;
     return;

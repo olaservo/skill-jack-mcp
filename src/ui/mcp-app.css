@@ -166,6 +166,39 @@ h1 {
   color: white;
 }
 
+.type-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.type-badge.local {
+  background: #6b7280;
+  color: white;
+}
+
+.type-badge.github {
+  background: #1f2937;
+  color: white;
+}
+
+.blocked-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  background: var(--error);
+  color: white;
+}
+
+.directory-card.blocked {
+  border-color: var(--error);
+  opacity: 0.8;
+}
+
 .skill-count {
   font-size: 11px;
   color: var(--text-secondary);

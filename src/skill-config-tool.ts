@@ -32,6 +32,7 @@ import {
   setStaticModeInConfig,
 } from "./skill-config.js";
 import { SkillState } from "./skill-tool.js";
+import { isGitHubUrl, parseGitHubUrl } from "./github-config.js";
 
 /**
  * Resource URI for the skill-config UI.
@@ -103,12 +104,33 @@ export function registerSkillConfigTool(
     // Count skills per directory
     for (const dir of dirs) {
       let count = 0;
-      for (const skill of skillState.skillMap.values()) {
-        const skillDir = path.dirname(skill.path);
-        if (skillDir.startsWith(dir.path)) {
-          count++;
+
+      if (isGitHubUrl(dir.path)) {
+        // For GitHub directories, match by owner/repo from skill source
+        try {
+          const spec = parseGitHubUrl(dir.path);
+          for (const skill of skillState.skillMap.values()) {
+            if (
+              skill.source.type === "github" &&
+              skill.source.owner?.toLowerCase() === spec.owner.toLowerCase() &&
+              skill.source.repo?.toLowerCase() === spec.repo.toLowerCase()
+            ) {
+              count++;
+            }
+          }
+        } catch {
+          // Invalid GitHub URL, count stays 0
+        }
+      } else {
+        // For local directories, match by path prefix
+        for (const skill of skillState.skillMap.values()) {
+          const skillDir = path.dirname(skill.path);
+          if (skillDir.startsWith(dir.path)) {
+            count++;
+          }
         }
       }
+
       dir.skillCount = count;
     }
 
@@ -131,6 +153,7 @@ export function registerSkillConfigTool(
           source: z.string(),
           type: z.string(),
           valid: z.boolean(),
+          allowed: z.boolean(),
           skillCount: z.number().optional(),
         })),
         activeSource: z.string(),
@@ -185,6 +208,7 @@ export function registerSkillConfigTool(
           source: z.string(),
           type: z.string(),
           valid: z.boolean(),
+          allowed: z.boolean(),
           skillCount: z.number().optional(),
         })).optional(),
         activeSource: z.string().optional(),
@@ -260,6 +284,7 @@ export function registerSkillConfigTool(
           source: z.string(),
           type: z.string(),
           valid: z.boolean(),
+          allowed: z.boolean(),
           skillCount: z.number().optional(),
         })).optional(),
         activeSource: z.string().optional(),
