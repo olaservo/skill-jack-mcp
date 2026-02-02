@@ -3,6 +3,7 @@
  * Handles detection of GitHub URLs, parsing repo specs, and allowlist validation.
  */
 
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -79,7 +80,7 @@ export function parseGitHubUrl(url: string): GitHubRepoSpec {
   }
 
   // Split remaining path: owner/repo[/subpath...]
-  const parts = normalized.split("/").filter((p) => p.length > 0);
+  let parts = normalized.split("/").filter((p) => p.length > 0);
 
   if (parts.length < 2) {
     throw new Error(
@@ -89,6 +90,19 @@ export function parseGitHubUrl(url: string): GitHubRepoSpec {
 
   const owner = parts[0];
   const repo = parts[1];
+
+  // Handle GitHub web URLs with /tree/<ref>/ or /blob/<ref>/ patterns
+  // e.g., owner/repo/tree/main/path/to/dir -> extract ref and subpath
+  if (parts.length >= 4 && (parts[2] === "tree" || parts[2] === "blob")) {
+    // parts[2] is "tree" or "blob", parts[3] is the ref
+    if (!ref) {
+      ref = parts[3];
+    }
+    // Everything after the ref is the subpath
+    const subpath = parts.length > 4 ? parts.slice(4).join("/") : undefined;
+    return { owner, repo, ref, subpath };
+  }
+
   const subpath = parts.length > 2 ? parts.slice(2).join("/") : undefined;
 
   return { owner, repo, ref, subpath };
@@ -138,14 +152,40 @@ function parseCommaList(envValue: string | undefined): string[] {
 }
 
 /**
- * Get GitHub configuration from environment variables.
+ * Path to the config file.
+ */
+const CONFIG_FILE_PATH = path.join(os.homedir(), ".skilljack", "config.json");
+
+/**
+ * Load allowlist from config file.
+ * Returns empty arrays if file doesn't exist or can't be parsed.
+ */
+function loadAllowlistFromConfig(): { orgs: string[]; users: string[] } {
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const content = fs.readFileSync(CONFIG_FILE_PATH, "utf-8");
+      const config = JSON.parse(content);
+      return {
+        orgs: Array.isArray(config.githubAllowedOrgs) ? config.githubAllowedOrgs : [],
+        users: Array.isArray(config.githubAllowedUsers) ? config.githubAllowedUsers : [],
+      };
+    }
+  } catch {
+    // Ignore errors reading config file
+  }
+  return { orgs: [], users: [] };
+}
+
+/**
+ * Get GitHub configuration from environment variables and config file.
+ * Environment variables take precedence over config file.
  *
  * Environment variables:
  *   GITHUB_TOKEN - Authentication token for private repos
  *   GITHUB_POLL_INTERVAL_MS - Polling interval (0 to disable, default 300000)
  *   SKILLJACK_CACHE_DIR - Cache directory (default ~/.skilljack/github-cache)
- *   GITHUB_ALLOWED_ORGS - Comma-separated list of allowed organizations
- *   GITHUB_ALLOWED_USERS - Comma-separated list of allowed users
+ *   GITHUB_ALLOWED_ORGS - Comma-separated list of allowed organizations (overrides config)
+ *   GITHUB_ALLOWED_USERS - Comma-separated list of allowed users (overrides config)
  */
 export function getGitHubConfig(): GitHubConfig {
   const pollIntervalStr = process.env.GITHUB_POLL_INTERVAL_MS;
@@ -157,12 +197,19 @@ export function getGitHubConfig(): GitHubConfig {
     }
   }
 
+  // Load allowlist from config file as fallback
+  const configAllowlist = loadAllowlistFromConfig();
+
+  // Environment variables override config file
+  const envOrgs = parseCommaList(process.env.GITHUB_ALLOWED_ORGS);
+  const envUsers = parseCommaList(process.env.GITHUB_ALLOWED_USERS);
+
   return {
     token: process.env.GITHUB_TOKEN,
     pollIntervalMs,
     cacheDir: process.env.SKILLJACK_CACHE_DIR || DEFAULT_CACHE_DIR,
-    allowedOrgs: parseCommaList(process.env.GITHUB_ALLOWED_ORGS),
-    allowedUsers: parseCommaList(process.env.GITHUB_ALLOWED_USERS),
+    allowedOrgs: envOrgs.length > 0 ? envOrgs : configAllowlist.orgs,
+    allowedUsers: envUsers.length > 0 ? envUsers : configAllowlist.users,
   };
 }
 

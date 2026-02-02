@@ -27,6 +27,48 @@
     <div class="loading">Loading directories...</div>
   </div>
 
+  <!-- GitHub Allowed Orgs Section -->
+  <div class="section-header">
+    <div>
+      <h2>GitHub Allowed Orgs</h2>
+      <div class="section-hint">Organizations allowed to sync skills from GitHub</div>
+    </div>
+    <button class="add-btn add-org-btn" id="add-org-btn">
+      <span>+</span> Add Org
+    </button>
+  </div>
+
+  <div id="allowed-orgs-list" class="allowed-list">
+    <div class="empty-state small">No allowed orgs configured. All orgs are allowed by default.</div>
+  </div>
+
+  <!-- Add Org Modal -->
+  <div class="modal-overlay" id="add-org-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Allowed GitHub Org</h2>
+        <button class="modal-close" data-modal="add-org-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="org-name">Organization Name</label>
+          <input
+            type="text"
+            id="org-name"
+            placeholder="e.g., modelcontextprotocol"
+          >
+          <div class="form-hint">
+            GitHub organization or username to allow for skill repositories
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-modal="add-org-modal">Cancel</button>
+        <button class="btn btn-primary" id="add-org-submit-btn">Add Org</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Directory Modal -->
   <div class="modal-overlay" id="add-modal">
     <div class="modal">

@@ -28,6 +28,8 @@ export interface SkillInvocationOverrides {
 export interface SkillConfig {
   skillDirectories: string[];
   skillInvocationOverrides?: Record<string, SkillInvocationOverrides>;
+  githubAllowedOrgs?: string[];
+  githubAllowedUsers?: string[];
 }
 
 /**
@@ -427,5 +429,85 @@ export function clearSkillInvocationOverride(
     delete config.skillInvocationOverrides[skillName];
   }
 
+  saveConfigFile(config);
+}
+
+/**
+ * Get the GitHub allowed orgs from config file.
+ */
+export function getGitHubAllowedOrgs(): string[] {
+  const config = loadConfigFile();
+  return config.githubAllowedOrgs || [];
+}
+
+/**
+ * Get the GitHub allowed users from config file.
+ */
+export function getGitHubAllowedUsers(): string[] {
+  const config = loadConfigFile();
+  return config.githubAllowedUsers || [];
+}
+
+/**
+ * Add a GitHub org to the allowed list.
+ * @param org - The org name to allow
+ */
+export function addGitHubAllowedOrg(org: string): void {
+  const config = loadConfigFile();
+  if (!config.githubAllowedOrgs) {
+    config.githubAllowedOrgs = [];
+  }
+  const normalized = org.toLowerCase().trim();
+  if (!config.githubAllowedOrgs.some((o) => o.toLowerCase() === normalized)) {
+    config.githubAllowedOrgs.push(org.trim());
+    saveConfigFile(config);
+  }
+}
+
+/**
+ * Remove a GitHub org from the allowed list.
+ * @param org - The org name to remove
+ */
+export function removeGitHubAllowedOrg(org: string): void {
+  const config = loadConfigFile();
+  if (!config.githubAllowedOrgs) {
+    return;
+  }
+  const normalized = org.toLowerCase().trim();
+  config.githubAllowedOrgs = config.githubAllowedOrgs.filter(
+    (o) => o.toLowerCase() !== normalized
+  );
+  saveConfigFile(config);
+}
+
+/**
+ * Add a GitHub user to the allowed list.
+ * @param user - The user name to allow
+ */
+export function addGitHubAllowedUser(user: string): void {
+  const config = loadConfigFile();
+  if (!config.githubAllowedUsers) {
+    config.githubAllowedUsers = [];
+  }
+  const normalized = user.toLowerCase().trim();
+  if (!config.githubAllowedUsers.some((u) => u.toLowerCase() === normalized)) {
+    config.githubAllowedUsers.push(user.trim());
+    saveConfigFile(config);
+  }
+}
+
+/**
+ * Remove a GitHub user from the allowed list.
+ * @param user - The user name to remove
+ */
+export function removeGitHubAllowedUser(user: string): void {
+  const config = loadConfigFile();
+  if (!config.githubAllowedUsers) {
+    return;
+  }
+  const normalized = user.toLowerCase().trim();
+  config.githubAllowedUsers = config.githubAllowedUsers.filter(
+    (u) => u.toLowerCase() !== normalized
+  );
   saveConfigFile(config);
 }

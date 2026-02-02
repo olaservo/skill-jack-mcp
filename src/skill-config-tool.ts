@@ -24,6 +24,10 @@ import {
   addDirectoryToConfig,
   removeDirectoryFromConfig,
   DirectoryInfo,
+  getGitHubAllowedOrgs,
+  getGitHubAllowedUsers,
+  addGitHubAllowedOrg,
+  removeGitHubAllowedOrg,
 } from "./skill-config.js";
 import { SkillState } from "./skill-tool.js";
 
@@ -129,6 +133,8 @@ export function registerSkillConfigTool(
         })),
         activeSource: z.string(),
         isOverridden: z.boolean(),
+        allowedOrgs: z.array(z.string()),
+        allowedUsers: z.array(z.string()),
       },
       _meta: { ui: { resourceUri: RESOURCE_URI } },
       annotations: {
@@ -153,6 +159,8 @@ export function registerSkillConfigTool(
           directories,
           activeSource: configState.activeSource,
           isOverridden: configState.isOverridden,
+          allowedOrgs: getGitHubAllowedOrgs(),
+          allowedUsers: getGitHubAllowedUsers(),
         },
       };
     }
@@ -300,6 +308,140 @@ export function registerSkillConfigTool(
           ],
           structuredContent: {
             success: false,
+            error: message,
+          },
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Add allowed org tool (UI-only)
+  registerAppTool(
+    server,
+    "skill-config-add-allowed-org",
+    {
+      title: "Add Allowed GitHub Org",
+      description: "Add a GitHub organization to the allowed list for skill repos.",
+      inputSchema: {
+        org: z.string().describe("GitHub organization name to allow"),
+      },
+      outputSchema: {
+        success: z.boolean(),
+        allowedOrgs: z.array(z.string()),
+        error: z.string().optional(),
+      },
+      _meta: {
+        ui: {
+          resourceUri: RESOURCE_URI,
+          visibility: ["app"],
+        },
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (args): Promise<CallToolResult> => {
+      const { org } = args as { org: string };
+
+      try {
+        addGitHubAllowedOrg(org);
+        const allowedOrgs = getGitHubAllowedOrgs();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Added allowed org: ${org}`,
+            },
+          ],
+          structuredContent: {
+            success: true,
+            allowedOrgs,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to add allowed org: ${message}`,
+            },
+          ],
+          structuredContent: {
+            success: false,
+            allowedOrgs: getGitHubAllowedOrgs(),
+            error: message,
+          },
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Remove allowed org tool (UI-only)
+  registerAppTool(
+    server,
+    "skill-config-remove-allowed-org",
+    {
+      title: "Remove Allowed GitHub Org",
+      description: "Remove a GitHub organization from the allowed list.",
+      inputSchema: {
+        org: z.string().describe("GitHub organization name to remove"),
+      },
+      outputSchema: {
+        success: z.boolean(),
+        allowedOrgs: z.array(z.string()),
+        error: z.string().optional(),
+      },
+      _meta: {
+        ui: {
+          resourceUri: RESOURCE_URI,
+          visibility: ["app"],
+        },
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (args): Promise<CallToolResult> => {
+      const { org } = args as { org: string };
+
+      try {
+        removeGitHubAllowedOrg(org);
+        const allowedOrgs = getGitHubAllowedOrgs();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Removed allowed org: ${org}`,
+            },
+          ],
+          structuredContent: {
+            success: true,
+            allowedOrgs,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to remove allowed org: ${message}`,
+            },
+          ],
+          structuredContent: {
+            success: false,
+            allowedOrgs: getGitHubAllowedOrgs(),
             error: message,
           },
           isError: true,

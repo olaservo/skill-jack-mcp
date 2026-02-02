@@ -198,11 +198,76 @@ h1 {
   color: white;
 }
 
+/* Section header for sub-sections */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.section-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.section-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Allowed orgs/users list */
+.allowed-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.allowed-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.allowed-name {
+  font-size: 13px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+}
+
+.remove-org-btn {
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.remove-org-btn:hover {
+  background: var(--error);
+  border-color: var(--error);
+  color: white;
+}
+
 /* Empty state */
 .empty-state {
   text-align: center;
   padding: 40px 20px;
   color: var(--text-secondary);
+}
+
+.empty-state.small {
+  padding: 16px;
+  font-size: 12px;
 }
 
 .empty-state p {
