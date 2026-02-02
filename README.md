@@ -53,7 +53,7 @@ For complete documentation, just ask your assistant:
 
 > "how do I use skilljack?" or "how does skilljack work behind the scenes?"
 
-This loads the full reference including tools, prompts, resources, configuration options, and architecture details.
+This loads the [full reference](https://github.com/olaservo/skilljack-mcp/blob/main/skills/skilljack-docs/SKILL.md) including tools, prompts, resources, configuration options, and architecture details.
 
 ## Related
 
