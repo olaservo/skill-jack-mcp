@@ -14,8 +14,8 @@ import { parse as parseYaml } from "yaml";
  * Indicates whether the skill comes from a local directory or GitHub repository.
  */
 export interface SkillSource {
-  type: "local" | "github";
-  displayName: string; // "Local" or "owner/repo"
+  type: "local" | "github" | "bundled";
+  displayName: string; // "Local", "owner/repo", or "Bundled"
   owner?: string; // GitHub org/user (only for github type)
   repo?: string; // GitHub repo name (only for github type)
 }
@@ -26,6 +26,14 @@ export interface SkillSource {
 export const DEFAULT_SKILL_SOURCE: SkillSource = {
   type: "local",
   displayName: "Local",
+};
+
+/**
+ * Source for skills bundled with the server package.
+ */
+export const BUNDLED_SKILL_SOURCE: SkillSource = {
+  type: "bundled",
+  displayName: "Bundled",
 };
 
 /**

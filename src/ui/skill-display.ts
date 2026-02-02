@@ -18,7 +18,7 @@ interface SkillDisplayInfo {
   isAssistantOverridden: boolean;
   isUserOverridden: boolean;
   // Source information
-  sourceType: "local" | "github";
+  sourceType: "local" | "github" | "bundled";
   sourceDisplayName: string;
   sourceOwner?: string;
   sourceRepo?: string;
@@ -126,19 +126,29 @@ function renderSkills() {
     .map((skill) => {
       const isCustomized = skill.isAssistantOverridden || skill.isUserOverridden;
       // Build source badge based on type
-      const sourceBadge = skill.sourceType === "github"
-        ? `<span class="source-badge github" title="From GitHub: ${escapeHtml(skill.sourceDisplayName)}">
+      let sourceBadge: string;
+      if (skill.sourceType === "github") {
+        sourceBadge = `<span class="source-badge github" title="From GitHub: ${escapeHtml(skill.sourceDisplayName)}">
              <svg class="source-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
                <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
              </svg>
              ${escapeHtml(skill.sourceDisplayName)}
-           </span>`
-        : `<span class="source-badge local" title="Local skill directory">
+           </span>`;
+      } else if (skill.sourceType === "bundled") {
+        sourceBadge = `<span class="source-badge bundled" title="Bundled with server">
+             <svg class="source-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+               <path fill="currentColor" d="M8.878.392a1.75 1.75 0 0 0-1.756 0l-5.25 3.045A1.75 1.75 0 0 0 1 4.951v6.098c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 0 0 1.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V4.951c0-.624-.332-1.2-.872-1.514L8.878.392ZM8 3.5a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V4.25A.75.75 0 0 1 8 3.5Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/>
+             </svg>
+             Bundled
+           </span>`;
+      } else {
+        sourceBadge = `<span class="source-badge local" title="Local skill directory">
              <svg class="source-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
                <path fill="currentColor" d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z"/>
              </svg>
              Local
            </span>`;
+      }
       return `
       <div class="skill-card" data-skill="${escapeHtml(skill.name)}">
         <div class="skill-header">

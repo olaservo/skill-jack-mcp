@@ -162,6 +162,11 @@ h1 {
   color: #fff;
 }
 
+.source-badge.bundled {
+  background: #6b5b95;
+  color: #fff;
+}
+
 .source-icon {
   flex-shrink: 0;
 }

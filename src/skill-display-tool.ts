@@ -87,7 +87,7 @@ interface SkillDisplayInfo {
   isAssistantOverridden: boolean;
   isUserOverridden: boolean;
   // Source information
-  sourceType: "local" | "github";
+  sourceType: "local" | "github" | "bundled";
   sourceDisplayName: string;
   sourceOwner?: string;
   sourceRepo?: string;
@@ -150,7 +150,7 @@ export function registerSkillDisplayTool(
           userInvocable: z.boolean(),
           isAssistantOverridden: z.boolean(),
           isUserOverridden: z.boolean(),
-          sourceType: z.enum(["local", "github"]),
+          sourceType: z.enum(["local", "github", "bundled"]),
           sourceDisplayName: z.string(),
           sourceOwner: z.string().optional(),
           sourceRepo: z.string().optional(),
@@ -201,7 +201,7 @@ export function registerSkillDisplayTool(
           userInvocable: z.boolean(),
           isAssistantOverridden: z.boolean(),
           isUserOverridden: z.boolean(),
-          sourceType: z.enum(["local", "github"]),
+          sourceType: z.enum(["local", "github", "bundled"]),
           sourceDisplayName: z.string(),
           sourceOwner: z.string().optional(),
           sourceRepo: z.string().optional(),
@@ -293,7 +293,7 @@ export function registerSkillDisplayTool(
           userInvocable: z.boolean(),
           isAssistantOverridden: z.boolean(),
           isUserOverridden: z.boolean(),
-          sourceType: z.enum(["local", "github"]),
+          sourceType: z.enum(["local", "github", "bundled"]),
           sourceDisplayName: z.string(),
           sourceOwner: z.string().optional(),
           sourceRepo: z.string().optional(),
