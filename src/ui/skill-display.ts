@@ -17,6 +17,11 @@ interface SkillDisplayInfo {
   userInvocable: boolean;
   isAssistantOverridden: boolean;
   isUserOverridden: boolean;
+  // Source information
+  sourceType: "local" | "github";
+  sourceDisplayName: string;
+  sourceOwner?: string;
+  sourceRepo?: string;
 }
 
 interface SkillDisplayState {
@@ -120,11 +125,28 @@ function renderSkills() {
   skillList.innerHTML = filtered
     .map((skill) => {
       const isCustomized = skill.isAssistantOverridden || skill.isUserOverridden;
+      // Build source badge based on type
+      const sourceBadge = skill.sourceType === "github"
+        ? `<span class="source-badge github" title="From GitHub: ${escapeHtml(skill.sourceDisplayName)}">
+             <svg class="source-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+               <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+             </svg>
+             ${escapeHtml(skill.sourceDisplayName)}
+           </span>`
+        : `<span class="source-badge local" title="Local skill directory">
+             <svg class="source-icon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+               <path fill="currentColor" d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z"/>
+             </svg>
+             Local
+           </span>`;
       return `
       <div class="skill-card" data-skill="${escapeHtml(skill.name)}">
         <div class="skill-header">
           <span class="skill-name">${escapeHtml(skill.name)}</span>
-          ${isCustomized ? '<span class="customized-badge">Customized</span>' : ""}
+          <div class="skill-badges">
+            ${sourceBadge}
+            ${isCustomized ? '<span class="customized-badge">Customized</span>' : ""}
+          </div>
         </div>
         <p class="skill-description">${escapeHtml(skill.description)}</p>
         <div class="skill-path">${escapeHtml(skill.path)}</div>

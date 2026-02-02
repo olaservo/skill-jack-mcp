@@ -10,6 +10,25 @@ import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 /**
+ * Source information for a skill.
+ * Indicates whether the skill comes from a local directory or GitHub repository.
+ */
+export interface SkillSource {
+  type: "local" | "github";
+  displayName: string; // "Local" or "owner/repo"
+  owner?: string; // GitHub org/user (only for github type)
+  repo?: string; // GitHub repo name (only for github type)
+}
+
+/**
+ * Default source for skills discovered without explicit source info.
+ */
+export const DEFAULT_SKILL_SOURCE: SkillSource = {
+  type: "local",
+  displayName: "Local",
+};
+
+/**
  * Metadata extracted from a skill's SKILL.md frontmatter.
  */
 export interface SkillMetadata {
@@ -23,6 +42,8 @@ export interface SkillMetadata {
   effectiveUserInvocable: boolean; // True if appears in prompts menu
   isAssistantOverridden: boolean; // True if config override exists
   isUserOverridden: boolean; // True if config override exists
+  // Source information
+  source: SkillSource; // Where this skill came from (local or GitHub)
 }
 
 /**
@@ -67,8 +88,11 @@ function parseFrontmatter(content: string): { metadata: Record<string, unknown>;
 /**
  * Discover all skills in a directory.
  * Scans for subdirectories containing SKILL.md files.
+ *
+ * @param skillsDir - The directory to scan for skills
+ * @param source - Optional source info to attach to discovered skills
  */
-export function discoverSkills(skillsDir: string): SkillMetadata[] {
+export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMetadata[] {
   const skills: SkillMetadata[] = [];
 
   if (!fs.existsSync(skillsDir)) {
@@ -117,6 +141,8 @@ export function discoverSkills(skillsDir: string): SkillMetadata[] {
         effectiveUserInvocable: effectiveUser,
         isAssistantOverridden: false,
         isUserOverridden: false,
+        // Source info (local or GitHub)
+        source: source || DEFAULT_SKILL_SOURCE,
       });
     } catch (error) {
       console.error(`Failed to parse skill at ${skillDir}:`, error);

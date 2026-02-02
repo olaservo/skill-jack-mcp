@@ -109,6 +109,39 @@ h1 {
   font-weight: 600;
 }
 
+/* Skill badges container */
+.skill-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Source badges */
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.source-badge.github {
+  background: #24292e;
+  color: #fff;
+}
+
+.source-badge.local {
+  background: var(--info);
+  color: #fff;
+}
+
+.source-icon {
+  flex-shrink: 0;
+}
+
 .customized-badge {
   font-size: 10px;
   padding: 2px 8px;

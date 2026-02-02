@@ -86,6 +86,11 @@ interface SkillDisplayInfo {
   userInvocable: boolean;
   isAssistantOverridden: boolean;
   isUserOverridden: boolean;
+  // Source information
+  sourceType: "local" | "github";
+  sourceDisplayName: string;
+  sourceOwner?: string;
+  sourceRepo?: string;
 }
 
 /**
@@ -102,6 +107,11 @@ function getSkillDisplayInfo(skillState: SkillState): SkillDisplayInfo[] {
       userInvocable: skill.effectiveUserInvocable,
       isAssistantOverridden: skill.isAssistantOverridden,
       isUserOverridden: skill.isUserOverridden,
+      // Source info
+      sourceType: skill.source.type,
+      sourceDisplayName: skill.source.displayName,
+      sourceOwner: skill.source.owner,
+      sourceRepo: skill.source.repo,
     });
   }
   // Sort by name for consistent display
@@ -140,6 +150,10 @@ export function registerSkillDisplayTool(
           userInvocable: z.boolean(),
           isAssistantOverridden: z.boolean(),
           isUserOverridden: z.boolean(),
+          sourceType: z.enum(["local", "github"]),
+          sourceDisplayName: z.string(),
+          sourceOwner: z.string().optional(),
+          sourceRepo: z.string().optional(),
         })),
         totalCount: z.number(),
       },
@@ -187,6 +201,10 @@ export function registerSkillDisplayTool(
           userInvocable: z.boolean(),
           isAssistantOverridden: z.boolean(),
           isUserOverridden: z.boolean(),
+          sourceType: z.enum(["local", "github"]),
+          sourceDisplayName: z.string(),
+          sourceOwner: z.string().optional(),
+          sourceRepo: z.string().optional(),
         })).optional(),
         totalCount: z.number().optional(),
         error: z.string().optional(),
@@ -275,6 +293,10 @@ export function registerSkillDisplayTool(
           userInvocable: z.boolean(),
           isAssistantOverridden: z.boolean(),
           isUserOverridden: z.boolean(),
+          sourceType: z.enum(["local", "github"]),
+          sourceDisplayName: z.string(),
+          sourceOwner: z.string().optional(),
+          sourceRepo: z.string().optional(),
         })).optional(),
         totalCount: z.number().optional(),
         error: z.string().optional(),
