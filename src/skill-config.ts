@@ -173,6 +173,8 @@ export function loadConfigFile(): SkillConfig {
       skillDirectories,
       skillInvocationOverrides,
       staticMode: parsed.staticMode === true,
+      githubAllowedOrgs: Array.isArray(parsed.githubAllowedOrgs) ? parsed.githubAllowedOrgs : [],
+      githubAllowedUsers: Array.isArray(parsed.githubAllowedUsers) ? parsed.githubAllowedUsers : [],
     };
   } catch (error) {
     console.error(`Warning: Failed to parse config file: ${error}`);

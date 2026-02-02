@@ -68,6 +68,14 @@ const confirmRemoveClose = document.getElementById("confirm-remove-close") as HT
 
 // Track pending removal
 let pendingRemovePath: string | null = null;
+let pendingRemoveOrg: string | null = null;
+
+// Confirm remove org modal DOM elements
+const confirmRemoveOrgModal = document.getElementById("confirm-remove-org-modal")!;
+const confirmRemoveOrgName = document.getElementById("confirm-remove-org-name")!;
+const confirmRemoveOrgBtn = document.getElementById("confirm-remove-org-btn") as HTMLButtonElement;
+const confirmRemoveOrgCancel = document.getElementById("confirm-remove-org-cancel") as HTMLButtonElement;
+const confirmRemoveOrgClose = document.getElementById("confirm-remove-org-close") as HTMLButtonElement;
 
 // Handle host context changes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -346,7 +354,7 @@ function renderAllowedOrgs() {
     btn.addEventListener("click", () => {
       const org = (btn as HTMLButtonElement).dataset.org;
       if (org) {
-        removeAllowedOrg(org);
+        showConfirmRemoveOrgModal(org);
       }
     });
   });
@@ -390,12 +398,21 @@ async function addAllowedOrg() {
   }
 }
 
-// Remove allowed org
-async function removeAllowedOrg(org: string) {
-  if (!confirm(`Remove "${org}" from allowed orgs?`)) {
-    return;
-  }
+// Show confirmation modal for removing an allowed org
+function showConfirmRemoveOrgModal(org: string) {
+  pendingRemoveOrg = org;
+  confirmRemoveOrgName.textContent = org;
+  confirmRemoveOrgModal.classList.add("active");
+}
 
+// Hide confirmation modal for org removal
+function closeConfirmRemoveOrgModal() {
+  confirmRemoveOrgModal.classList.remove("active");
+  pendingRemoveOrg = null;
+}
+
+// Remove allowed org (called after confirmation)
+async function removeAllowedOrg(org: string) {
   try {
     const result = await app!.callServerTool({
       name: "skill-config-remove-allowed-org",
@@ -483,6 +500,17 @@ confirmRemoveBtn.addEventListener("click", async () => {
 });
 confirmRemoveCancel.addEventListener("click", closeConfirmRemoveModal);
 confirmRemoveClose.addEventListener("click", closeConfirmRemoveModal);
+
+// Confirm remove org modal event listeners
+confirmRemoveOrgBtn.addEventListener("click", async () => {
+  if (pendingRemoveOrg) {
+    const org = pendingRemoveOrg;
+    closeConfirmRemoveOrgModal();
+    await removeAllowedOrg(org);
+  }
+});
+confirmRemoveOrgCancel.addEventListener("click", closeConfirmRemoveOrgModal);
+confirmRemoveOrgClose.addEventListener("click", closeConfirmRemoveOrgModal);
 
 // Org modal event listeners
 addOrgBtn.addEventListener("click", showOrgModal);
