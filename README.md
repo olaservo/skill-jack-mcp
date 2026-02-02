@@ -51,7 +51,7 @@ skilljack-mcp --static /path/to/skills
 
 For complete documentation, just ask your assistant:
 
-> "how do I use skilljack?" or "what tools does skilljack provide?"
+> "how do I use skilljack?" or "how does skilljack work behind the scenes?"
 
 This loads the full reference including tools, prompts, resources, configuration options, and architecture details.
 
