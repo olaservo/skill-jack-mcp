@@ -2,7 +2,7 @@
 
 An MCP server that jacks [Agent Skills](https://agentskills.io) directly into your LLM's brain.
 
-> **Recommended:** For best results, use an MCP client that supports `tools/listChanged` notifications (e.g., Claude Code). This enables dynamic skill discovery - when skills are added or modified, the client automatically refreshes its understanding of available skills.
+> **Recommended:** For best results, use an MCP client that supports `tools/listChanged` notifications (e.g., Claude Code). This enables dynamic skill discovery - when skills are added or modified, the client automatically refreshes its understanding of available skills. Alternatively, use `--static` mode for predictable behavior with a fixed skill set.
 
 ## Features
 
@@ -65,6 +65,26 @@ SKILLS_DIR=/path/to/skills,/path/to/more/skills skilljack-mcp
 ```
 
 Each directory is scanned along with its `.claude/skills/` and `skills/` subdirectories for skills. Duplicate skill names are handled by keeping the first occurrence.
+
+### Static Mode
+
+By default, Skilljack MCP watches skill directories for changes and notifies clients when skills are added, modified, or removed.
+
+Enable **static mode** to freeze the skills list at startup:
+
+```bash
+skilljack-mcp --static /path/to/skills
+# or
+SKILLJACK_STATIC=true skilljack-mcp /path/to/skills
+```
+
+In static mode:
+- Skills are discovered once at startup and never refreshed
+- No file watchers are set up for skill directories
+- `tools.listChanged` and `prompts.listChanged` capabilities are `false`
+- Resource subscriptions remain fully dynamic (individual skill files can still be watched)
+
+Use static mode when you need predictable behavior or have a fixed set of skills that won't change during the session.
 
 **Windows note**: Use forward slashes in paths when using with MCP Inspector:
 ```bash

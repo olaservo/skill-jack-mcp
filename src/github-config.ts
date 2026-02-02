@@ -111,16 +111,16 @@ export function parseGitHubUrl(url: string): GitHubRepoSpec {
 /**
  * Check if a repository is allowed by the allowlist.
  * If no allowlist is configured (both allowedOrgs and allowedUsers empty),
- * all repos are allowed.
+ * all repos are DENIED by default for security.
  *
  * @param spec - The repository specification
  * @param config - GitHub configuration with allowlists
  * @returns true if allowed, false if blocked
  */
 export function isRepoAllowed(spec: GitHubRepoSpec, config: GitHubConfig): boolean {
-  // If no allowlist configured, allow all
+  // If no allowlist configured, deny all for security
   if (config.allowedOrgs.length === 0 && config.allowedUsers.length === 0) {
-    return true;
+    return false;
   }
 
   const ownerLower = spec.owner.toLowerCase();

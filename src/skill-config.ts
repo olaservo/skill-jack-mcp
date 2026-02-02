@@ -12,7 +12,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { isGitHubUrl } from "./github-config.js";
+import { isGitHubUrl, parseGitHubUrl, isRepoAllowed, getGitHubConfig } from "./github-config.js";
 
 /**
  * Invocation settings that can be overridden per skill.
@@ -27,6 +27,7 @@ export interface SkillInvocationOverrides {
  */
 export interface SkillConfig {
   skillDirectories: string[];
+  staticMode?: boolean;
   skillInvocationOverrides?: Record<string, SkillInvocationOverrides>;
   githubAllowedOrgs?: string[];
   githubAllowedUsers?: string[];
@@ -51,6 +52,7 @@ export interface DirectoryInfo {
   type: SourceType;
   skillCount: number;
   valid: boolean;
+  allowed: boolean; // For GitHub repos: whether org/user is in allowlist
 }
 
 /**
@@ -68,6 +70,23 @@ function isValidPath(p: string): boolean {
  */
 function getSourceType(p: string): SourceType {
   return isGitHubUrl(p) ? "github" : "local";
+}
+
+/**
+ * Check if a path is allowed (local paths are always allowed,
+ * GitHub URLs must have their org/user in the allowlist).
+ */
+function isPathAllowed(p: string): boolean {
+  if (!isGitHubUrl(p)) {
+    return true; // Local paths are always allowed
+  }
+  try {
+    const spec = parseGitHubUrl(p);
+    const config = getGitHubConfig();
+    return isRepoAllowed(spec, config);
+  } catch {
+    return false; // Invalid GitHub URL
+  }
 }
 
 /**
@@ -150,7 +169,11 @@ export function loadConfigFile(): SkillConfig {
       }
     }
 
-    return { skillDirectories, skillInvocationOverrides };
+    return {
+      skillDirectories,
+      skillInvocationOverrides,
+      staticMode: parsed.staticMode === true,
+    };
   } catch (error) {
     console.error(`Warning: Failed to parse config file: ${error}`);
     return { skillDirectories: [], skillInvocationOverrides: {} };
@@ -227,6 +250,7 @@ export function getConfigState(): ConfigState {
         type: getSourceType(p),
         skillCount: 0, // Will be filled in by caller
         valid: isValidPath(p),
+        allowed: isPathAllowed(p),
       })),
       activeSource: "cli",
       isOverridden: true,
@@ -243,6 +267,7 @@ export function getConfigState(): ConfigState {
         type: getSourceType(p),
         skillCount: 0,
         valid: isValidPath(p),
+        allowed: isPathAllowed(p),
       })),
       activeSource: "env",
       isOverridden: true,
@@ -258,6 +283,7 @@ export function getConfigState(): ConfigState {
       type: getSourceType(p),
       skillCount: 0,
       valid: isValidPath(p),
+      allowed: isPathAllowed(p),
     })),
     activeSource: "config",
     isOverridden: false,
@@ -282,6 +308,7 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
         type: getSourceType(p),
         skillCount: 0,
         valid: isValidPath(p),
+        allowed: isPathAllowed(p),
       });
     }
   }
@@ -296,6 +323,7 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
         type: getSourceType(p),
         skillCount: 0,
         valid: isValidPath(p),
+        allowed: isPathAllowed(p),
       });
     }
   }
@@ -311,6 +339,7 @@ export function getAllDirectoriesWithSources(): DirectoryInfo[] {
         type: getSourceType(p),
         skillCount: 0,
         valid: isValidPath(p),
+        allowed: isPathAllowed(p),
       });
     }
   }
@@ -373,6 +402,23 @@ export function removeDirectoryFromConfig(directory: string): void {
 export function getActiveDirectories(): string[] {
   const state = getConfigState();
   return state.directories.map((d) => d.path);
+}
+
+/**
+ * Get static mode setting from config file.
+ */
+export function getStaticModeFromConfig(): boolean {
+  const config = loadConfigFile();
+  return config.staticMode === true;
+}
+
+/**
+ * Set static mode setting in config file.
+ */
+export function setStaticModeInConfig(enabled: boolean): void {
+  const config = loadConfigFile();
+  config.staticMode = enabled;
+  saveConfigFile(config);
 }
 
 /**

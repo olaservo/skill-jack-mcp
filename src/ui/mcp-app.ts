@@ -12,7 +12,9 @@ import {
 interface DirectoryInfo {
   path: string;
   source: "cli" | "env" | "config";
+  type: "local" | "github";
   valid: boolean;
+  allowed: boolean;
   skillCount?: number;
 }
 
@@ -20,6 +22,7 @@ interface ConfigState {
   directories: DirectoryInfo[];
   activeSource: string;
   isOverridden: boolean;
+  staticMode?: boolean;
   allowedOrgs?: string[];
   allowedUsers?: string[];
   success?: boolean;
@@ -30,6 +33,7 @@ interface ConfigState {
 let directories: DirectoryInfo[] = [];
 let activeSource = "config";
 let isOverridden = false;
+let staticMode = false;
 let allowedOrgs: string[] = [];
 let allowedUsers: string[] = [];
 let app: App | null = null;
@@ -51,6 +55,9 @@ const addOrgBtn = document.getElementById("add-org-btn") as HTMLButtonElement;
 const addOrgModal = document.getElementById("add-org-modal")!;
 const orgNameInput = document.getElementById("org-name") as HTMLInputElement;
 const addOrgSubmitBtn = document.getElementById("add-org-submit-btn") as HTMLButtonElement;
+
+// Static mode DOM element
+const staticModeToggle = document.getElementById("static-mode-toggle") as HTMLInputElement;
 
 // Handle host context changes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,6 +92,9 @@ function updateState(data: ConfigState) {
   if (data.isOverridden !== undefined) {
     isOverridden = data.isOverridden;
   }
+  if (data.staticMode !== undefined) {
+    staticMode = data.staticMode;
+  }
   if (data.allowedOrgs) {
     allowedOrgs = data.allowedOrgs;
   }
@@ -102,6 +112,7 @@ function render() {
   renderDirectories();
   renderAllowedOrgs();
   updateAddButton();
+  renderStaticModeToggle();
 }
 
 function renderStats() {
@@ -137,14 +148,19 @@ function renderDirectories() {
   directoryList.innerHTML = directories
     .map((dir) => {
       const isReadOnly = dir.source !== "config";
+      const isBlocked = dir.type === "github" && !dir.allowed;
       return `
-      <div class="directory-card ${isReadOnly ? "readonly" : ""}">
+      <div class="directory-card ${isReadOnly ? "readonly" : ""} ${isBlocked ? "blocked" : ""}">
         ${isReadOnly ? `<span class="lock-icon" title="Read-only: configured via ${dir.source.toUpperCase()}">&#128274;</span>` : ""}
         <div class="directory-info">
           <div class="directory-path">${escapeHtml(dir.path)}</div>
           <div class="directory-meta">
             <span class="source-badge ${dir.source}">${dir.source.toUpperCase()}</span>
-            <span class="skill-count">${dir.skillCount} skill${dir.skillCount !== 1 ? "s" : ""}</span>
+            <span class="type-badge ${dir.type}">${dir.type.toUpperCase()}</span>
+            ${isBlocked
+              ? `<span class="blocked-badge" title="Add org/user to allowed list to sync">BLOCKED</span>`
+              : `<span class="skill-count">${dir.skillCount} skill${dir.skillCount !== 1 ? "s" : ""}</span>`
+            }
             <span class="validity-icon ${dir.valid ? "valid" : "invalid"}" title="${dir.valid ? "Directory exists" : "Directory not found"}">
               ${dir.valid ? "&#10003;" : "&#10007;"}
             </span>
@@ -177,6 +193,49 @@ function updateAddButton() {
       " override is active";
   } else {
     addBtn.title = "";
+  }
+}
+
+function renderStaticModeToggle() {
+  if (staticModeToggle) {
+    staticModeToggle.checked = staticMode;
+  }
+}
+
+// Toggle static mode
+async function setStaticModeEnabled(enabled: boolean) {
+  staticModeToggle.disabled = true;
+
+  try {
+    const result = await app!.callServerTool({
+      name: "skill-config-set-static-mode",
+      arguments: { enabled },
+    });
+
+    console.log("Static mode result:", result);
+
+    const structured = result.structuredContent as unknown as { success?: boolean; staticMode?: boolean; error?: string };
+    if (structured?.success) {
+      staticMode = structured.staticMode ?? enabled;
+      renderStaticModeToggle();
+      showToast(
+        enabled
+          ? "Static mode enabled. Restart server for changes to take effect."
+          : "Static mode disabled. Restart server for changes to take effect.",
+        "success"
+      );
+    } else {
+      // Revert toggle on failure
+      staticModeToggle.checked = staticMode;
+      showToast(structured?.error || "Failed to change static mode", "error");
+    }
+  } catch (error) {
+    console.error("Set static mode error:", error);
+    // Revert toggle on error
+    staticModeToggle.checked = staticMode;
+    showToast((error as Error).message || "Failed to change static mode", "error");
+  } finally {
+    staticModeToggle.disabled = false;
   }
 }
 
@@ -248,7 +307,7 @@ function renderAllowedOrgs() {
   if (allowedOrgs.length === 0) {
     allowedOrgsList.innerHTML = `
       <div class="empty-state small">
-        No allowed orgs configured. All GitHub orgs/users are allowed by default.
+        No allowed orgs configured. GitHub repos are blocked until an org/user is added.
       </div>
     `;
     return;
@@ -404,6 +463,12 @@ orgNameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     addAllowedOrg();
   }
+});
+
+// Static mode toggle event listener
+staticModeToggle?.addEventListener("change", (e) => {
+  const enabled = (e.target as HTMLInputElement).checked;
+  setStaticModeEnabled(enabled);
 });
 
 // 1. Create app instance

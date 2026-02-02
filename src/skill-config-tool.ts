@@ -28,8 +28,11 @@ import {
   getGitHubAllowedUsers,
   addGitHubAllowedOrg,
   removeGitHubAllowedOrg,
+  getStaticModeFromConfig,
+  setStaticModeInConfig,
 } from "./skill-config.js";
 import { SkillState } from "./skill-tool.js";
+import { isGitHubUrl, parseGitHubUrl } from "./github-config.js";
 
 /**
  * Resource URI for the skill-config UI.
@@ -101,12 +104,33 @@ export function registerSkillConfigTool(
     // Count skills per directory
     for (const dir of dirs) {
       let count = 0;
-      for (const skill of skillState.skillMap.values()) {
-        const skillDir = path.dirname(skill.path);
-        if (skillDir.startsWith(dir.path)) {
-          count++;
+
+      if (isGitHubUrl(dir.path)) {
+        // For GitHub directories, match by owner/repo from skill source
+        try {
+          const spec = parseGitHubUrl(dir.path);
+          for (const skill of skillState.skillMap.values()) {
+            if (
+              skill.source.type === "github" &&
+              skill.source.owner?.toLowerCase() === spec.owner.toLowerCase() &&
+              skill.source.repo?.toLowerCase() === spec.repo.toLowerCase()
+            ) {
+              count++;
+            }
+          }
+        } catch {
+          // Invalid GitHub URL, count stays 0
+        }
+      } else {
+        // For local directories, match by path prefix
+        for (const skill of skillState.skillMap.values()) {
+          const skillDir = path.dirname(skill.path);
+          if (skillDir.startsWith(dir.path)) {
+            count++;
+          }
         }
       }
+
       dir.skillCount = count;
     }
 
@@ -129,10 +153,12 @@ export function registerSkillConfigTool(
           source: z.string(),
           type: z.string(),
           valid: z.boolean(),
+          allowed: z.boolean(),
           skillCount: z.number().optional(),
         })),
         activeSource: z.string(),
         isOverridden: z.boolean(),
+        staticMode: z.boolean(),
         allowedOrgs: z.array(z.string()),
         allowedUsers: z.array(z.string()),
       },
@@ -159,6 +185,7 @@ export function registerSkillConfigTool(
           directories,
           activeSource: configState.activeSource,
           isOverridden: configState.isOverridden,
+          staticMode: getStaticModeFromConfig(),
           allowedOrgs: getGitHubAllowedOrgs(),
           allowedUsers: getGitHubAllowedUsers(),
         },
@@ -181,6 +208,7 @@ export function registerSkillConfigTool(
           source: z.string(),
           type: z.string(),
           valid: z.boolean(),
+          allowed: z.boolean(),
           skillCount: z.number().optional(),
         })).optional(),
         activeSource: z.string().optional(),
@@ -256,6 +284,7 @@ export function registerSkillConfigTool(
           source: z.string(),
           type: z.string(),
           valid: z.boolean(),
+          allowed: z.boolean(),
           skillCount: z.number().optional(),
         })).optional(),
         activeSource: z.string().optional(),
@@ -442,6 +471,71 @@ export function registerSkillConfigTool(
           structuredContent: {
             success: false,
             allowedOrgs: getGitHubAllowedOrgs(),
+            error: message,
+          },
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Set static mode tool (UI-only, hidden from model)
+  registerAppTool(
+    server,
+    "skill-config-set-static-mode",
+    {
+      title: "Set Static Mode",
+      description: "Enable or disable static mode (freezes skills list at startup).",
+      inputSchema: {
+        enabled: z.boolean().describe("Whether to enable static mode"),
+      },
+      outputSchema: {
+        success: z.boolean(),
+        staticMode: z.boolean().optional(),
+        error: z.string().optional(),
+      },
+      _meta: {
+        ui: {
+          resourceUri: RESOURCE_URI,
+          visibility: ["app"], // Hidden from model, UI can call it
+        },
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async (args): Promise<CallToolResult> => {
+      const { enabled } = args as { enabled: boolean };
+
+      try {
+        setStaticModeInConfig(enabled);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Static mode ${enabled ? "enabled" : "disabled"}. Restart server for changes to take effect.`,
+            },
+          ],
+          structuredContent: {
+            success: true,
+            staticMode: enabled,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to set static mode: ${message}`,
+            },
+          ],
+          structuredContent: {
+            success: false,
             error: message,
           },
           isError: true,

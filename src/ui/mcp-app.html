@@ -39,7 +39,25 @@
   </div>
 
   <div id="allowed-orgs-list" class="allowed-list">
-    <div class="empty-state small">No allowed orgs configured. All orgs are allowed by default.</div>
+    <div class="empty-state small">No allowed orgs configured. GitHub repos are blocked until an org/user is added.</div>
+  </div>
+
+  <!-- Settings Section -->
+  <div class="settings-section">
+    <h2>Settings</h2>
+    <div class="setting-item">
+      <div class="setting-info">
+        <label for="static-mode-toggle">Static Mode</label>
+        <div class="setting-hint">
+          Freeze skills list at startup. Disables file watching and dynamic updates.
+          <br><strong>Requires server restart to take effect.</strong>
+        </div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="static-mode-toggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
   </div>
 
   <!-- Add Org Modal -->

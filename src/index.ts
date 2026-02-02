@@ -7,10 +7,17 @@
  *
  * Usage:
  *   skilljack-mcp /path/to/skills [/path2 ...]           # Local directories
+ *   skilljack-mcp --static /path/to/skills               # Static mode (no file watching)
  *   skilljack-mcp github.com/owner/repo                  # GitHub repository
  *   skilljack-mcp /local github.com/owner/repo           # Mixed local + GitHub
  *   SKILLS_DIR=/path,github.com/owner/repo skilljack-mcp # Via environment
+ *   SKILLJACK_STATIC=true skilljack-mcp                  # Static mode via env
  *   (or configure local directories via the skill-config UI)
+ *
+ * Options:
+ *   --static  Freeze skills list at startup. Disables file watching and
+ *             tools/prompts listChanged notifications. Resource subscriptions
+ *             remain fully dynamic.
  */
 
 import { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,7 +35,7 @@ import {
   refreshSubscriptions,
   SubscriptionManager,
 } from "./subscriptions.js";
-import { getActiveDirectories, getSkillInvocationOverrides } from "./skill-config.js";
+import { getActiveDirectories, getSkillInvocationOverrides, getStaticModeFromConfig } from "./skill-config.js";
 import { registerSkillConfigTool } from "./skill-config-tool.js";
 import { registerSkillDisplayTool } from "./skill-display-tool.js";
 import {
@@ -118,6 +125,29 @@ let currentGithubSpecs: GitHubRepoSpec[] = [];
  * Maps directory paths to their source info (local or GitHub).
  */
 let currentSourceMap: DirectorySourceMap = {};
+
+/**
+ * Check if static mode is enabled.
+ * Static mode freezes the skills list at startup - no file watching,
+ * no listChanged notifications for tools/prompts.
+ * Priority: CLI flag > env var > config file
+ */
+function getStaticMode(): boolean {
+  // Check CLI flag (highest priority)
+  const args = process.argv.slice(2);
+  if (args.includes("--static")) {
+    return true;
+  }
+
+  // Check environment variable
+  const envValue = process.env.SKILLJACK_STATIC?.toLowerCase();
+  if (envValue === "true" || envValue === "1" || envValue === "yes") {
+    return true;
+  }
+
+  // Check config file (lowest priority)
+  return getStaticModeFromConfig();
+}
 
 /**
  * Classify paths as local directories or GitHub repositories.
@@ -395,6 +425,9 @@ function watchSkillDirectories(
 const subscriptionManager = createSubscriptionManager();
 
 async function main() {
+  // Check if static mode is enabled
+  const isStatic = getStaticMode();
+
   // Get skill directories from CLI args, env var, or config file
   // This returns paths that may include GitHub URLs
   const allPaths = getActiveDirectories();
@@ -467,6 +500,10 @@ async function main() {
     }
   }
 
+  if (isStatic) {
+    console.error("Static mode enabled - skills list frozen at startup");
+  }
+
   // Discover skills at startup
   let skills = discoverSkillsFromDirs(currentSkillsDirs, currentSourceMap);
 
@@ -478,6 +515,8 @@ async function main() {
   console.error(`Discovered ${skills.length} skill(s)`);
 
   // Create the MCP server
+  // In static mode, disable listChanged for tools/prompts (skills list is frozen)
+  // Resource subscriptions remain dynamic for individual skill file watching
   const server = new McpServer(
     {
       name: "skilljack-mcp",
@@ -485,9 +524,9 @@ async function main() {
     },
     {
       capabilities: {
-        tools: { listChanged: true },
+        tools: { listChanged: !isStatic },
         resources: { subscribe: true, listChanged: true },
-        prompts: { listChanged: true },
+        prompts: { listChanged: !isStatic },
       },
     }
   );
@@ -501,35 +540,38 @@ async function main() {
   registerSubscriptionHandlers(server, skillState, subscriptionManager);
 
   // Register skill-config tool for UI-based directory configuration
-  registerSkillConfigTool(server, skillState, () => {
-    // Callback when directories change via UI
-    // Reload directories from config and refresh skills
-    // Note: UI only manages local directories, GitHub repos are managed via CLI/env
-    const newPaths = getActiveDirectories();
-    const { localDirs: newLocalDirs } = classifyPaths(newPaths);
-    currentSkillsDirs = [...newLocalDirs, ...githubDirs];
-    // Rebuild source map with updated local directories
-    currentSourceMap = buildDirectorySourceMap(newLocalDirs, currentGithubSpecs, githubConfig.cacheDir);
-    console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
-    refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
-  });
+  // Skip in static mode since skills list is frozen
+  if (!isStatic) {
+    registerSkillConfigTool(server, skillState, () => {
+      // Callback when directories change via UI
+      // Reload directories from config and refresh skills
+      // Note: UI only manages local directories, GitHub repos are managed via CLI/env
+      const newPaths = getActiveDirectories();
+      const { localDirs: newLocalDirs } = classifyPaths(newPaths);
+      currentSkillsDirs = [...newLocalDirs, ...githubDirs];
+      // Rebuild source map with updated local directories
+      currentSourceMap = buildDirectorySourceMap(newLocalDirs, currentGithubSpecs, githubConfig.cacheDir);
+      console.error(`Directories changed via UI. New directories: ${currentSkillsDirs.join(", ") || "(none)"}`);
+      refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+    });
 
-  // Register skill-display tool for UI-based invocation settings
-  registerSkillDisplayTool(server, skillState, () => {
-    // Callback when invocation settings change via UI
-    // Refresh skills to apply new overrides
-    console.error("Invocation settings changed via UI. Refreshing skills...");
-    refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
-  });
+    // Register skill-display tool for UI-based invocation settings
+    registerSkillDisplayTool(server, skillState, () => {
+      // Callback when invocation settings change via UI
+      // Refresh skills to apply new overrides
+      console.error("Invocation settings changed via UI. Refreshing skills...");
+      refreshSkills(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
+    });
+  }
 
-  // Set up file watchers for skill directory changes
-  if (currentSkillsDirs.length > 0) {
+  // Set up file watchers for skill directory changes (skip in static mode)
+  if (!isStatic && currentSkillsDirs.length > 0) {
     watchSkillDirectories(currentSkillsDirs, server, skillTool, promptRegistry, subscriptionManager);
   }
 
-  // Set up GitHub polling for updates
+  // Set up GitHub polling for updates (skip in static mode)
   let pollingManager: PollingManager | null = null;
-  if (currentGithubSpecs.length > 0 && githubConfig.pollIntervalMs > 0) {
+  if (!isStatic && currentGithubSpecs.length > 0 && githubConfig.pollIntervalMs > 0) {
     const syncOptions: SyncOptions = {
       cacheDir: githubConfig.cacheDir,
       token: githubConfig.token,
