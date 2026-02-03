@@ -159,7 +159,7 @@ function renderSkills() {
           </div>
         </div>
         <p class="skill-description">${escapeHtml(skill.description)}</p>
-        <div class="skill-path">${escapeHtml(skill.path)}</div>
+        ${skill.sourceType !== "bundled" ? `<div class="skill-path">${escapeHtml(skill.path)}</div>` : ""}
         <div class="skill-controls">
           <div class="toggle-group">
             <span class="toggle-label ${skill.isAssistantOverridden ? "overridden" : ""}">Assistant</span>
