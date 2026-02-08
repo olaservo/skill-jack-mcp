@@ -80,6 +80,7 @@ export type OnInvocationChangedCallback = () => void;
  */
 interface SkillDisplayInfo {
   name: string;
+  baseName: string;
   description: string;
   path: string;
   assistantInvocable: boolean;
@@ -101,6 +102,7 @@ function getSkillDisplayInfo(skillState: SkillState): SkillDisplayInfo[] {
   for (const skill of skillState.skillMap.values()) {
     skills.push({
       name: skill.name,
+      baseName: skill.baseName,
       description: skill.description,
       path: skill.path,
       assistantInvocable: skill.effectiveAssistantInvocable,
@@ -144,6 +146,7 @@ export function registerSkillDisplayTool(
       outputSchema: {
         skills: z.array(z.object({
           name: z.string(),
+          baseName: z.string(),
           description: z.string(),
           path: z.string(),
           assistantInvocable: z.boolean(),
@@ -195,6 +198,7 @@ export function registerSkillDisplayTool(
         success: z.boolean(),
         skills: z.array(z.object({
           name: z.string(),
+          baseName: z.string(),
           description: z.string(),
           path: z.string(),
           assistantInvocable: z.boolean(),
@@ -287,6 +291,7 @@ export function registerSkillDisplayTool(
         success: z.boolean(),
         skills: z.array(z.object({
           name: z.string(),
+          baseName: z.string(),
           description: z.string(),
           path: z.string(),
           assistantInvocable: z.boolean(),

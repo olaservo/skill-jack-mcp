@@ -29,7 +29,7 @@ export interface PromptRegistry {
  */
 function getSkillNameCompletions(value: string, skillState: SkillState): string[] {
   const names = Array.from(skillState.skillMap.keys());
-  return names.filter((name) => name.toLowerCase().startsWith(value.toLowerCase()));
+  return names.filter((name) => name.toLowerCase().includes(value.toLowerCase()));
 }
 
 /**
