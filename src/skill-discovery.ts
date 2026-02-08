@@ -45,6 +45,7 @@ export interface SkillMetadata {
   path: string; // Full path to SKILL.md
   disableModelInvocation?: boolean; // When true, exclude from tool description
   userInvocable?: boolean; // When false, exclude from prompts (default: true)
+  metadata?: Record<string, string>; // From frontmatter "metadata" key (Agent Skills spec), translated to _meta on MCP primitives
   // Computed effective values (after config overrides applied)
   effectiveAssistantInvocable: boolean; // True if model can auto-invoke
   effectiveUserInvocable: boolean; // True if appears in prompts menu
@@ -126,6 +127,7 @@ export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMe
       const description = metadata.description;
       const disableModelInvocation = metadata["disable-model-invocation"];
       const userInvocable = metadata["user-invocable"];
+      const rawMetadata = metadata["metadata"];
 
       if (typeof name !== "string" || !name.trim()) {
         console.error(`Skill at ${skillDir}: missing or invalid 'name' field`);
@@ -136,6 +138,21 @@ export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMe
         continue;
       }
 
+      // Validate metadata: must be a plain object if provided (Agent Skills spec: string keys to string values)
+      let skillMetadata: Record<string, string> | undefined;
+      if (rawMetadata !== undefined && rawMetadata !== null) {
+        if (typeof rawMetadata === "object" && !Array.isArray(rawMetadata)) {
+          // Coerce all values to strings per Agent Skills spec
+          skillMetadata = Object.fromEntries(
+            Object.entries(rawMetadata as Record<string, unknown>).map(([k, v]) => [String(k), String(v)])
+          );
+        } else {
+          console.error(
+            `Skill at ${skillDir}: 'metadata' must be a YAML mapping (key-value pairs), got ${Array.isArray(rawMetadata) ? "array" : typeof rawMetadata}`
+          );
+        }
+      }
+
       const effectiveAssistant = disableModelInvocation !== true;
       const effectiveUser = userInvocable !== false;
       skills.push({
@@ -144,6 +161,7 @@ export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMe
         path: skillMdPath,
         disableModelInvocation: disableModelInvocation === true,
         userInvocable: userInvocable !== false, // Default to true
+        metadata: skillMetadata,
         // Initialize effective values from frontmatter (overrides applied later)
         effectiveAssistantInvocable: effectiveAssistant,
         effectiveUserInvocable: effectiveUser,

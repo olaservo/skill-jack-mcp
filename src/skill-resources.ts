@@ -85,15 +85,19 @@ function registerSkillDirectoryCollection(
     new ResourceTemplate("skill://{skillName}/", {
       list: async () => {
         // Return one entry per skill (the directory collection)
-        const resources: Array<{ uri: string; name: string; mimeType: string; description?: string }> = [];
+        const resources: Array<{ uri: string; name: string; mimeType: string; description?: string; _meta?: Record<string, string> }> = [];
 
         for (const [name, skill] of skillState.skillMap) {
-          resources.push({
+          const resource: (typeof resources)[number] = {
             uri: `skill://${encodeURIComponent(name)}/`,
             name: `${name}/`,
             mimeType: "text/plain",
             description: `All files in ${name} skill directory`,
-          });
+          };
+          if (skill.metadata) {
+            resource._meta = skill.metadata;
+          }
+          resources.push(resource);
         }
 
         return { resources };
@@ -184,15 +188,19 @@ function registerSkillTemplate(
     new ResourceTemplate("skill://{skillName}", {
       list: async () => {
         // Dynamically return current skills
-        const resources: Array<{ uri: string; name: string; mimeType: string; description?: string }> = [];
+        const resources: Array<{ uri: string; name: string; mimeType: string; description?: string; _meta?: Record<string, string> }> = [];
 
         for (const [name, skill] of skillState.skillMap) {
-          resources.push({
+          const resource: (typeof resources)[number] = {
             uri: `skill://${encodeURIComponent(name)}`,
             name,
             mimeType: "text/markdown",
             description: skill.description,
-          });
+          };
+          if (skill.metadata) {
+            resource._meta = skill.metadata;
+          }
+          resources.push(resource);
         }
 
         return { resources };

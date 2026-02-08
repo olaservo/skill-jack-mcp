@@ -36,6 +36,7 @@ src/
 
 **SkillMetadata** - Parsed skill info:
 - `name`, `description`, `path` (to SKILL.md)
+- `metadata` (optional) - From frontmatter `metadata` key, translated to `_meta` on MCP resources/tool results
 
 **RegisteredTool** - SDK type for dynamic tool updates:
 - Returned by `registerSkillTool()`
