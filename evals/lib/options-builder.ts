@@ -2,7 +2,7 @@
 import * as path from "path";
 import * as fs from "fs/promises";
 
-export type EvalMode = "mcp" | "native" | "cli-native" | "mcp+native";
+export type EvalMode = "mcp" | "local" | "cli-local" | "mcp+local";
 
 export interface BuildOptionsConfig {
   mode: EvalMode;
@@ -12,9 +12,9 @@ export interface BuildOptionsConfig {
 }
 
 /**
- * Copy skills to .claude/skills/ for native mode
+ * Copy skills to .claude/skills/ for local mode
  */
-export async function setupNativeSkills(skillsDir: string): Promise<void> {
+export async function setupLocalSkills(skillsDir: string): Promise<void> {
   const sourceDir = path.resolve(skillsDir);
   const targetDir = path.resolve('.claude/skills');
 
@@ -38,7 +38,7 @@ export async function setupNativeSkills(skillsDir: string): Promise<void> {
 }
 
 /**
- * Ensure .claude/settings.json exists for native skill discovery
+ * Ensure .claude/settings.json exists for local skill discovery
  */
 async function ensureSettingsJson(): Promise<void> {
   const settingsPath = path.resolve('.claude/settings.json');
@@ -61,9 +61,9 @@ async function ensureSettingsJson(): Promise<void> {
 }
 
 /**
- * Clean up .claude/skills/ after native mode
+ * Clean up .claude/skills/ after local mode
  */
-export async function cleanupNativeSkills(): Promise<void> {
+export async function cleanupLocalSkills(): Promise<void> {
   const targetDir = path.resolve('.claude/skills');
 
   try {
@@ -104,9 +104,9 @@ export async function buildOptions(config: BuildOptionsConfig): Promise<any> {
 
   let options: Record<string, unknown>;
 
-  if (mode === "cli-native") {
-    // CLI Native mode: set up skills in .claude/skills/ for CLI to discover
-    await setupNativeSkills(skillsDir);
+  if (mode === "cli-local") {
+    // CLI Local mode: set up skills in .claude/skills/ for CLI to discover
+    await setupLocalSkills(skillsDir);
     await ensureSettingsJson();
 
     // Return minimal options - CLI will use its own defaults
@@ -114,10 +114,10 @@ export async function buildOptions(config: BuildOptionsConfig): Promise<any> {
       cwd: process.cwd(),
       model: modelId
     };
-  } else if (mode === "native") {
-    // Native mode: use settingSources and Skill tool
+  } else if (mode === "local") {
+    // Local mode: use settingSources and Skill tool
     // Must use claude_code preset to get skill awareness in system prompt
-    await setupNativeSkills(skillsDir);
+    await setupLocalSkills(skillsDir);
     await ensureSettingsJson();
 
     options = {
@@ -132,10 +132,10 @@ export async function buildOptions(config: BuildOptionsConfig): Promise<any> {
       permissionMode: "default" as const,
       model: modelId
     };
-  } else if (mode === "mcp+native") {
-    // Combined mode: both MCP server AND native skills enabled
+  } else if (mode === "mcp+local") {
+    // Combined mode: both MCP server AND local skills enabled
     // Tests behavior when both skill delivery mechanisms are available
-    await setupNativeSkills(skillsDir);
+    await setupLocalSkills(skillsDir);
     await ensureSettingsJson();
 
     const absoluteSkillsDir = path.resolve(skillsDir);
@@ -161,7 +161,7 @@ export async function buildOptions(config: BuildOptionsConfig): Promise<any> {
         ? { type: 'preset' as const, preset: 'claude_code' as const, append: systemPrompt }
         : { type: 'preset' as const, preset: 'claude_code' as const },
       settingSources: ['project' as const],
-      // Allow both MCP and native skill tools
+      // Allow both MCP and local skill tools
       allowedTools: ["Bash", "Read", "Write", "Skill", "mcp__skilljack"],
       permissionMode: "default" as const,
       model: modelId
@@ -193,7 +193,7 @@ export async function buildOptions(config: BuildOptionsConfig): Promise<any> {
   }
 
   // For MCP mode, optionally include custom systemPrompt
-  // (native mode already handles systemPrompt with the claude_code preset above)
+  // (local mode already handles systemPrompt with the claude_code preset above)
   if (mode === "mcp" && systemPrompt) {
     options.systemPrompt = systemPrompt;
   }
