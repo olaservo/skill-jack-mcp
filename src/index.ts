@@ -95,6 +95,7 @@ function buildDirectorySourceMap(
     const source: SkillSource = {
       type: "local",
       displayName: "Local",
+      prefix: path.basename(dir),
     };
     map[dir] = source;
     // Also map standard subdirectories
@@ -109,6 +110,7 @@ function buildDirectorySourceMap(
     const source: SkillSource = {
       type: "github",
       displayName: `${spec.owner}/${spec.repo}`,
+      prefix: `${spec.owner}-${spec.repo}`,
       owner: spec.owner,
       repo: spec.repo,
     };

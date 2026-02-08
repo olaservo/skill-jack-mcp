@@ -31,11 +31,14 @@ src/
 
 ## Key Abstractions
 
+**SkillSource** - Origin info with namespace prefix:
+- `prefix: string` - Namespace prefix (local: dir basename, GitHub: `owner-repo`, bundled: `""`)
+
 **SkillState** - Shared state:
-- `skillMap: Map<string, SkillMetadata>` - name → skill lookup
+- `skillMap: Map<string, SkillMetadata>` - qualified name → skill lookup
 
 **SkillMetadata** - Parsed skill info:
-- `name`, `description`, `path` (to SKILL.md)
+- `name` (qualified, e.g., `my-project__commit`), `baseName` (original from frontmatter), `description`, `path` (to SKILL.md)
 
 **RegisteredTool** - SDK type for dynamic tool updates:
 - Returned by `registerSkillTool()`
@@ -43,7 +46,7 @@ src/
 
 **PromptRegistry** - Tracks registered prompts for updates:
 - `skillPrompt: RegisteredPrompt` - The `/skill` prompt with auto-completion
-- `perSkillPrompts: Map<string, RegisteredPrompt>` - Per-skill prompts (e.g., `/mcp-server-ts`)
+- `perSkillPrompts: Map<string, RegisteredPrompt>` - Per-skill prompts (e.g., `/my-project__mcp-server-ts`)
 
 ## Architecture
 
@@ -63,6 +66,7 @@ src/
 | `discoverSkillsFromDirs()` | index.ts | Scan directories for skills |
 | `refreshSkills()` | index.ts | Re-discover + update tool/prompts + notify clients |
 | `watchSkillDirectories()` | index.ts | Set up chokidar watchers (skipped in static mode) |
+| `sanitizePrefix()` | skill-discovery.ts | Clean prefix strings for qualified names |
 | `generateInstructions()` | skill-discovery.ts | Create XML skill list |
 | `getToolDescription()` | skill-tool.ts | Usage text + skill list for tool desc |
 | `registerSkillPrompts()` | skill-prompts.ts | Register /skill + per-skill prompts |

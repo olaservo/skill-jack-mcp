@@ -101,7 +101,7 @@ function registerSkillDirectoryCollection(
       complete: {
         skillName: (value: string) => {
           const names = Array.from(skillState.skillMap.keys());
-          return names.filter((n) => n.toLowerCase().startsWith(value.toLowerCase()));
+          return names.filter((n) => n.toLowerCase().includes(value.toLowerCase()));
         },
       },
     }),
@@ -200,7 +200,7 @@ function registerSkillTemplate(
       complete: {
         skillName: (value: string) => {
           const names = Array.from(skillState.skillMap.keys());
-          return names.filter((name) => name.toLowerCase().startsWith(value.toLowerCase()));
+          return names.filter((name) => name.toLowerCase().includes(value.toLowerCase()));
         },
       },
     }),

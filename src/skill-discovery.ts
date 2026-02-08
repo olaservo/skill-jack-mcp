@@ -16,6 +16,7 @@ import { parse as parseYaml } from "yaml";
 export interface SkillSource {
   type: "local" | "github" | "bundled";
   displayName: string; // "Local", "owner/repo", or "Bundled"
+  prefix: string; // Namespace prefix for skill names (e.g., "my-project", "owner-repo", "" for bundled)
   owner?: string; // GitHub org/user (only for github type)
   repo?: string; // GitHub repo name (only for github type)
 }
@@ -26,6 +27,7 @@ export interface SkillSource {
 export const DEFAULT_SKILL_SOURCE: SkillSource = {
   type: "local",
   displayName: "Local",
+  prefix: "local",
 };
 
 /**
@@ -34,13 +36,15 @@ export const DEFAULT_SKILL_SOURCE: SkillSource = {
 export const BUNDLED_SKILL_SOURCE: SkillSource = {
   type: "bundled",
   displayName: "Bundled",
+  prefix: "",
 };
 
 /**
  * Metadata extracted from a skill's SKILL.md frontmatter.
  */
 export interface SkillMetadata {
-  name: string;
+  name: string; // Qualified name with prefix (e.g., "my-project__commit")
+  baseName: string; // Original name from frontmatter (e.g., "commit")
   description: string;
   path: string; // Full path to SKILL.md
   disableModelInvocation?: boolean; // When true, exclude from tool description
@@ -94,6 +98,27 @@ function parseFrontmatter(content: string): { metadata: Record<string, unknown>;
 }
 
 /**
+ * Sanitize a prefix string for use in qualified skill names.
+ * Replaces spaces with hyphens and strips special characters.
+ */
+export function sanitizePrefix(raw: string): string {
+  return raw
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9\-_.]/g, "")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Compute the qualified name for a skill by combining prefix and base name.
+ * If prefix is empty, returns the base name unchanged.
+ */
+function qualifyName(prefix: string, baseName: string): string {
+  const sanitized = sanitizePrefix(prefix);
+  if (!sanitized) return baseName;
+  return `${sanitized}__${baseName}`;
+}
+
+/**
  * Discover all skills in a directory.
  * Scans for subdirectories containing SKILL.md files.
  *
@@ -138,8 +163,12 @@ export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMe
 
       const effectiveAssistant = disableModelInvocation !== true;
       const effectiveUser = userInvocable !== false;
+      const baseName = (name as string).trim();
+      const skillSource = source || DEFAULT_SKILL_SOURCE;
+      const qualifiedName = qualifyName(skillSource.prefix, baseName);
       skills.push({
-        name: name.trim(),
+        name: qualifiedName,
+        baseName,
         description: description.trim(),
         path: skillMdPath,
         disableModelInvocation: disableModelInvocation === true,
@@ -150,7 +179,7 @@ export function discoverSkills(skillsDir: string, source?: SkillSource): SkillMe
         isAssistantOverridden: false,
         isUserOverridden: false,
         // Source info (local or GitHub)
-        source: source || DEFAULT_SKILL_SOURCE,
+        source: skillSource,
       });
     } catch (error) {
       console.error(`Failed to parse skill at ${skillDir}:`, error);
