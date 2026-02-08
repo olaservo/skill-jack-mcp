@@ -4,7 +4,7 @@ Evaluation scripts for testing skill activation, progressive disclosure, and ins
 
 ## Purpose
 
-These evals provide baselines for comparing native vs tool-based (MCP) skill support across different agents and configurations.
+These evals provide baselines for comparing local (filesystem) vs tool-based (MCP) skill support across different agents and configurations.
 
 ## Setup
 
@@ -23,13 +23,13 @@ npm run build
 npm run eval
 npm run eval -- --task=greeting --mode=mcp
 
-# Run with native mode (Agent SDK)
-npm run eval -- --mode=native
-npm run eval -- --task=greeting --mode=native
+# Run with local mode (Agent SDK)
+npm run eval -- --mode=local
+npm run eval -- --task=greeting --mode=local
 
-# Run with CLI Native mode (Claude Code CLI directly)
-npm run eval -- --mode=cli-native
-npm run eval -- --task=greeting --mode=cli-native
+# Run with CLI Local mode (Claude Code CLI directly)
+npm run eval -- --mode=cli-local
+npm run eval -- --task=greeting --mode=cli-local
 
 # Run specific tasks
 npm run eval:greeting
@@ -45,30 +45,30 @@ npm run eval -- --model=claude-haiku-4-5-20251001
 | Mode | Skill Delivery | Tool Used | Runtime |
 |------|----------------|-----------|---------|
 | `mcp` | skilljack MCP server | `mcp__skilljack__skill` | Agent SDK |
-| `native` | `.claude/skills/` directory | `Skill` | Agent SDK |
-| `cli-native` | `.claude/skills/` directory | `Skill` | Claude Code CLI |
-| `mcp+native` | Both MCP server AND `.claude/skills/` | Either tool | Agent SDK |
+| `local` | `.claude/skills/` directory | `Skill` | Agent SDK |
+| `cli-local` | `.claude/skills/` directory | `Skill` | Claude Code CLI |
+| `mcp+local` | Both MCP server AND `.claude/skills/` | Either tool | Agent SDK |
 
 ### MCP Mode (default)
 - Skills served via skilljack MCP server
 - Requires `npm run build` first
 - Tests tool-based skill delivery via Agent SDK
 
-### Native Mode
+### Local Mode
 - Skills copied to `.claude/skills/` before eval
-- Uses SDK's native skill discovery (`settingSources`)
+- Uses SDK's local skill discovery (`settingSources`)
 - Cleaned up after eval completes
-- Tests native skill file support via Agent SDK
+- Tests local skill file support via Agent SDK
 - **Note**: Requires `systemPrompt: { type: 'preset', preset: 'claude_code' }` — the SDK's default minimal prompt lacks skill awareness
 
-### CLI Native Mode
+### CLI Local Mode
 - Skills copied to `.claude/skills/` before eval
 - Shells out to `claude` CLI directly (non-interactive)
 - Tests what Claude Code CLI does automatically with skills
 - Useful for comparing CLI behavior vs Agent SDK behavior
 
-### MCP+Native Mode (Combined)
-- Both MCP server AND native skills enabled simultaneously
+### MCP+Local Mode (Combined)
+- Both MCP server AND local skills enabled simultaneously
 - Skills served via MCP AND copied to `.claude/skills/`
 - Tests which delivery mechanism the agent prefers
 - Useful for testing real-world scenarios where both are available
@@ -144,9 +144,9 @@ evals/
 
 **"Noodling" without skill activation**: In some modes, the agent may explore the codebase (Glob, Read, Bash) to find skill files directly rather than using the skill tool. This is less efficient but can still achieve the goal. Current evals don't count this as "activation" - only explicit skill tool calls are tracked.
 
-**Context duplication in mcp+native mode**: When both MCP and native skills are enabled, the same skill appears twice (via MCP tool description AND `.claude/skills/` files). This may cause context bloat and could affect which mechanism the agent chooses.
+**Context duplication in mcp+local mode**: When both MCP and local skills are enabled, the same skill appears twice (via MCP tool description AND `.claude/skills/` files). This may cause context bloat and could affect which mechanism the agent chooses.
 
-**Activation differences by mode**: Initial testing showed native mode activated skills more readily than MCP mode for the same prompts. Investigation revealed this is due to the native Skill tool description containing explicit activation triggers:
+**Activation differences by mode**: Initial testing showed local mode activated skills more readily than MCP mode for the same prompts. Investigation revealed this is due to the local Skill tool description containing explicit activation triggers:
 
 > "When a skill is relevant, you must invoke this tool IMMEDIATELY as your first action"
 > "NEVER just announce or mention a skill in your text response without actually calling this tool"
@@ -154,13 +154,13 @@ evals/
 
 Source: [Unofficial Claude Code system prompts](https://github.com/Piebald-AI/claude-code-system-prompts/blob/main/system-prompts/tool-description-skill.md)
 
-**Solution**: Adding similar language to the MCP skill tool description brings activation behavior in line with native mode. The skilljack MCP server now includes these activation triggers in its tool description.
+**Solution**: Adding similar language to the MCP skill tool description brings activation behavior in line with local mode. The skilljack MCP server now includes these activation triggers in its tool description.
 - Logs and results are gitignored but preserved locally for analysis
 - Custom system prompts can be added per-task via `systemPrompt` field in task config
-- Session IDs include mode prefix for easy comparison (e.g., `mcp-greeting-*` vs `native-greeting-*` vs `cli-native-greeting-*`)
+- Session IDs include mode prefix for easy comparison (e.g., `mcp-greeting-*` vs `local-greeting-*` vs `cli-local-greeting-*`)
 
 ## Future Work
 
 - Test on additional clients that support required MCP capabilities (`tools/listChanged`) and agent skills
-- Compare tool-based skill activation vs native skill file support across different agents
-- Add resource loading detection for native mode if SDK supports it
+- Compare tool-based skill activation vs local skill file support across different agents
+- Add resource loading detection for local mode if SDK supports it

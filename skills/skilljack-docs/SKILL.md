@@ -154,7 +154,7 @@ This server exposes skills via **tools**, **resources**, and **prompts**:
 - **Prompts** (`/skill`, `/skill-name`) - For explicit user invocation. Use `/skill` with auto-completion or select a skill directly by name.
 - **Resources** (`skill://` URIs) - For manual selection in apps that support it (e.g., Claude Desktop's resource picker). Useful when you want to explicitly attach a skill to the conversation.
 
-Most users will rely on tools for automatic skill activation. Prompts provide user-initiated loading with auto-completion. Resources provide an alternative for manual control.
+Skills are context delivered through MCP primitives. Tools enable autonomous activation by the agent. Prompts enable user-initiated loading with auto-completion. Resources provide explicit access for manual control. Each mechanism suits different workflows — skills aren't tied to any single delivery path.
 
 ## Progressive Disclosure Design
 
@@ -418,8 +418,8 @@ npm install
 npm run build
 npm run eval                              # Default: greeting task, MCP mode
 npm run eval -- --task=xlsx-openpyxl      # Specific task
-npm run eval -- --mode=native             # Native skill mode
-npm run eval -- --mode=mcp+native         # Both MCP and native enabled
+npm run eval -- --mode=local              # Local skill mode
+npm run eval -- --mode=mcp+local          # Both MCP and local enabled
 ```
 
 See [evals/README.md](https://github.com/olaservo/skilljack-mcp/blob/main/evals/README.md) for details on available tasks, modes, and findings about activation behavior differences.
